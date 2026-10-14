@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="PegLine.Views.RopeWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:PegLine.ViewModels"
+    xmlns:views="using:PegLine.Views"
+    Title="挂绳">
+    <Grid x:Name="Root" Background="Transparent" SizeChanged="Root_SizeChanged" UseLayoutRounding="True">
+        <Canvas x:Name="RopeCanvas" Height="64" VerticalAlignment="Top" IsHitTestVisible="False">
+            <Path x:Name="RopeShadow" Stroke="#5A3A22" StrokeThickness="7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+            <Path x:Name="RopeLine" Stroke="#8D5A32" StrokeThickness="4.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+            <Path x:Name="RopeHighlight" Stroke="#E0C09A" StrokeThickness="1.25" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+            <Ellipse x:Name="LeftKnob" Width="14" Height="14" Fill="#6B4228" />
+            <Ellipse x:Name="RightKnob" Width="14" Height="14" Fill="#6B4228" />
+        </Canvas>
+
+        <Button
+            x:Name="BrandButton"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            Margin="18,40,0,0"
+            Click="Brand_Click"
+            AutomationProperties.Name="打开挂绳设置">
+            <Button.Template>
+                <ControlTemplate TargetType="Button">
+                    <Border Background="#F7F1E8" BorderBrush="#8C4A2F" BorderThickness="1" CornerRadius="12" Padding="10,4">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock FontFamily="Microsoft YaHei UI" FontSize="13" FontWeight="SemiBold" Foreground="#2C2416" Text="挂绳" />
+                            <TextBlock FontSize="11" Foreground="#6F6256" VerticalAlignment="Center" Text="PegLine" />
+                        </StackPanel>
+                    </Border>
+                </ControlTemplate>
+            </Button.Template>
+        </Button>
+
+        <ScrollViewer
+            x:Name="PegScroll"
+            Background="Transparent"
+            Margin="132,14,36,6"
+            HorizontalScrollBarVisibility="Hidden"
+            HorizontalScrollMode="Disabled"
+            VerticalScrollBarVisibility="Disabled"
+            VerticalScrollMode="Disabled"
+            ZoomMode="Disabled"
+            PointerWheelChanged="PegScroll_PointerWheelChanged">
+            <ItemsControl x:Name="PegList" HorizontalAlignment="Center">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="14" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:PegView">
+                        <views:PegControl Peg="{x:Bind}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <Border
+            x:Name="EmptyTag"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Margin="80,78,0,0"
+            Padding="14,8"
+            Background="#F7F1E8"
+            BorderBrush="#E4D3BC"
+            BorderThickness="1"
+            CornerRadius="4"
+            IsHitTestVisible="False"
+            Visibility="Collapsed">
+            <StackPanel Spacing="2">
+                <TextBlock FontFamily="Microsoft YaHei UI" FontSize="13" FontWeight="SemiBold" Foreground="#2C2416" Text="绳子是空的" />
+                <TextBlock FontSize="12" Foreground="#6F6256" Text="截一张图，它会挂在这里。" />
+            </StackPanel>
+        </Border>
+
+        <Border
+            x:Name="StatusPill"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Margin="0,0,0,10"
+            Padding="12,4"
+            Background="#F7F1E8"
+            BorderBrush="#8C4A2F"
+            BorderThickness="1"
+            CornerRadius="10"
+            Opacity="0"
+            IsHitTestVisible="False">
+            <TextBlock x:Name="StatusText" FontFamily="Microsoft YaHei UI" FontSize="12" Foreground="#2C2416" />
+        </Border>
+    </Grid>
+</Window>

@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="PegLine.Views.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="挂绳设置">
+    <Grid Background="#F3EBDD" RequestedTheme="Light">
+        <ScrollViewer Padding="28,22,28,20" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="16" MaxWidth="520">
+                <StackPanel Spacing="4">
+                    <TextBlock FontFamily="Microsoft YaHei UI" FontSize="28" FontWeight="SemiBold" Foreground="#2C2416" Text="挂绳" />
+                    <TextBlock FontSize="14" Foreground="#6F6256" TextWrapping="Wrap" Text="PegLine 把最近的截图暂存在屏幕边。图片和设置只留在这台电脑上。" />
+                </StackPanel>
+
+                <Border Background="#FFF9F2" BorderBrush="#E4D3BC" BorderThickness="1" CornerRadius="12" Padding="16">
+                    <StackPanel Spacing="10">
+                        <TextBlock FontFamily="Microsoft YaHei UI" FontWeight="SemiBold" Foreground="#2C2416" Text="显示  ·  Overlay" />
+                        <TextBlock Foreground="#2C2416" Text="显示样式" />
+                        <ComboBox x:Name="SkinCombo" HorizontalAlignment="Stretch" SelectionChanged="SkinCombo_SelectionChanged">
+                            <ComboBoxItem Content="侧边暂存坞" Tag="Dock" />
+                            <ComboBoxItem Content="顶部晾衣绳" Tag="Rope" />
+                        </ComboBox>
+                        <TextBlock FontSize="12" Foreground="#6F6256" TextWrapping="Wrap"
+                                   Text="默认侧边暂存坞：截图后出现迷你操作条，卡片叠在屏幕右侧。也可切回顶部晾衣绳。" />
+                        <TextBlock FontFamily="Microsoft YaHei UI" FontWeight="SemiBold" Foreground="#2C2416" Text="容量与热键" Margin="0,8,0,0" />
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock VerticalAlignment="Center" Foreground="#2C2416" Text="最大挂件数" />
+                            <TextBlock x:Name="MaxPegsValue" Grid.Column="1" FontWeight="SemiBold" Foreground="#8C4A2F" Text="12" />
+                        </Grid>
+                        <Slider x:Name="MaxPegsSlider" Minimum="4" Maximum="30" StepFrequency="1" TickFrequency="1" ValueChanged="MaxPegsSlider_ValueChanged" />
+                        <TextBlock Foreground="#2C2416" Text="显示 / 隐藏绳子" />
+                        <TextBox
+                            x:Name="HotkeyBox"
+                            FontFamily="Consolas, Microsoft YaHei UI"
+                            IsSpellCheckEnabled="False"
+                            PlaceholderText="点这里，然后按下组合键"
+                            PreviewKeyDown="HotkeyBox_PreviewKeyDown"
+                            GotFocus="HotkeyBox_GotFocus"
+                            LostFocus="HotkeyBox_LostFocus" />
+                        <TextBlock x:Name="HotkeyStatus" FontSize="12" Foreground="#6F6256" TextWrapping="Wrap" />
+                        <TextBlock Foreground="#2C2416" Text="截图并挂上绳" />
+                        <TextBox
+                            x:Name="ScreenshotHotkeyBox"
+                            FontFamily="Consolas, Microsoft YaHei UI"
+                            IsSpellCheckEnabled="False"
+                            PlaceholderText="点这里，然后按下组合键"
+                            PreviewKeyDown="ScreenshotHotkeyBox_PreviewKeyDown"
+                            GotFocus="HotkeyBox_GotFocus"
+                            LostFocus="HotkeyBox_LostFocus" />
+                        <TextBlock x:Name="ScreenshotHotkeyStatus" FontSize="12" Foreground="#6F6256" TextWrapping="Wrap"
+                                   Text="默认 Ctrl+Shift+S。会打开系统截图；截完后若开了剪贴板监视，会自动挂上。Win+Shift+S 仍然可用。" />
+                    </StackPanel>
+                </Border>
+
+                <Border Background="#FFF9F2" BorderBrush="#E4D3BC" BorderThickness="1" CornerRadius="12" Padding="16">
+                    <StackPanel Spacing="10">
+                        <TextBlock FontFamily="Microsoft YaHei UI" FontWeight="SemiBold" Foreground="#2C2416" Text="文件夹  ·  Folders" />
+                        <ToggleSwitch
+                            x:Name="DefaultFolderSwitch"
+                            Header="默认截图文件夹"
+                            OnContent="开"
+                            OffContent="关"
+                            Toggled="DefaultFolderSwitch_Toggled" />
+                        <TextBlock x:Name="DefaultFolderPath" FontFamily="Consolas, Microsoft YaHei UI" FontSize="12" Foreground="#2C2416" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                        <TextBlock x:Name="DefaultFolderState" FontSize="12" Foreground="#6F6256" />
+                        <TextBlock Foreground="#2C2416" Text="其他文件夹" />
+                        <ItemsControl x:Name="FolderList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,8" ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Spacing="2">
+                                            <TextBlock FontFamily="Consolas, Microsoft YaHei UI" FontSize="12" Foreground="#2C2416" Text="{Binding FullPath}" TextWrapping="Wrap" />
+                                            <TextBlock FontSize="12" Foreground="#6F6256" Text="{Binding Status}" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" VerticalAlignment="Top" Content="移除" Click="RemoveFolder_Click" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button HorizontalAlignment="Left" Content="添加文件夹" Click="AddFolder_Click" />
+                    </StackPanel>
+                </Border>
+
+                <Border Background="#FFF9F2" BorderBrush="#E4D3BC" BorderThickness="1" CornerRadius="12" Padding="16">
+                    <StackPanel Spacing="8">
+                        <TextBlock FontFamily="Microsoft YaHei UI" FontWeight="SemiBold" Foreground="#2C2416" Text="剪贴板与删除  ·  Clipboard" />
+                        <ToggleSwitch
+                            x:Name="ClipboardSwitch"
+                            Header="监视剪贴板里的图片"
+                            OnContent="开"
+                            OffContent="关"
+                            Toggled="ClipboardSwitch_Toggled" />
+                        <TextBlock FontSize="12" Foreground="#6F6256" TextWrapping="Wrap" Text="打开后，复制到剪贴板的图片也会挂上来。剪贴板图片会存成缓存文件，方便拖出去。" />
+                        <ToggleSwitch
+                            x:Name="DeleteSwitch"
+                            Header="取下挂件时删除文件"
+                            OnContent="开"
+                            OffContent="关"
+                            Toggled="DeleteSwitch_Toggled" />
+                        <TextBlock FontSize="12" Foreground="#6F6256" TextWrapping="Wrap" Text="关掉时，截图还在原来的文件夹，只是不再挂着。从剪贴板收下的缓存，取下时总会删掉。" />
+                    </StackPanel>
+                </Border>
+
+                <Border Background="#FFF9F2" BorderBrush="#E4D3BC" BorderThickness="1" CornerRadius="12" Padding="16">
+                    <StackPanel Spacing="6">
+                        <TextBlock FontFamily="Microsoft YaHei UI" FontWeight="SemiBold" Foreground="#2C2416" Text="隐私  ·  Privacy" />
+                        <TextBlock FontSize="12" Foreground="#6F6256" TextWrapping="Wrap" Text="PegLine 没有网络代码，没有账号，也不收集使用情况。点一下挂件会把图片复制到系统剪贴板，这是本机操作。" />
+                        <TextBlock FontSize="12" Foreground="#2C2416" Text="设置文件" />
+                        <TextBox x:Name="SettingsPathText" FontFamily="Consolas, Microsoft YaHei UI" FontSize="12" IsReadOnly="True" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Button HorizontalAlignment="Right" Content="完成" Click="Done_Click" Style="{StaticResource AccentButtonStyle}" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>
