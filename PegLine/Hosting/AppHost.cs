@@ -30,7 +30,6 @@ public sealed class AppHost
     private HotkeyHook? _hotkey;
     private ClipboardMonitor? _clipboard;
     private RopeOverlayForm? _rope;
-    private SnipActionBarForm? _actionBar;
     private Microsoft.UI.Xaml.Window? _keepAlive;
     private SettingsWindow? _settingsWindow;
     private FileStream? _instanceLock;
@@ -55,8 +54,6 @@ public sealed class AppHost
     public AppSettings Settings => _settings;
 
     public bool IsRopeVisible => _settings.RopeVisible;
-
-    public bool IsActionBarOpen => _actionBar?.IsOpen == true;
 
     public string OverlaySkin => "Rope";
 
@@ -106,7 +103,6 @@ public sealed class AppHost
             _watcher.SetFolders(_settings.ResolveWatchFolders());
             _keepAlive = new Microsoft.UI.Xaml.Window();
             _keepAlive.AppWindow.Hide();
-            _actionBar = new SnipActionBarForm(this);
             CreateOverlayForSkin();
 
             ResumeHotkey();
@@ -132,14 +128,8 @@ public sealed class AppHost
         }
         else
         {
-            _actionBar?.Dismiss();
             _rope?.HideRope();
         }
-    }
-
-        public void NotifyActionBarChanged()
-    {
-        // Action bar floats independently; rope overlay needs no keep-open flag.
     }
 
     private void CreateOverlayForSkin()
@@ -577,9 +567,6 @@ public void ShowSettings()
                 _settingsWindow.Close();
                 _settingsWindow = null;
             }
-
-            _actionBar?.Close();
-            _actionBar = null;
             DisposeOverlays();
         }
         catch (Exception ex)
@@ -840,14 +827,12 @@ public void ShowSettings()
             {
                 var bumped = Mirror(_board.AddOrBump(existing, PegOrigin.Folder, _settings.MaxPegs));
                 _lastFolderPegTick = Environment.TickCount64;
-                AfterPegMirrored(bumped, fromClipboard: false);
                 return;
             }
 
             var added = Mirror(_board.AddOrBump(path, PegOrigin.Folder, _settings.MaxPegs));
             RememberContentHash(full);
             _lastFolderPegTick = Environment.TickCount64;
-            AfterPegMirrored(added, fromClipboard: false);
         }
         catch (Exception ex)
         {
@@ -978,7 +963,6 @@ public void ShowSettings()
                     // Treat clipboard hang like a folder peg so the follow-up
                     // Win+Shift+S bitmap event does not hang a second copy.
                     _lastFolderPegTick = Environment.TickCount64;
-                    AfterPegMirrored(bumped, fromClipboard: true);
                     return;
                 }
 
@@ -987,7 +971,6 @@ public void ShowSettings()
                 // Treat clipboard StorageItems / bitmap hang like a folder peg so the
                 // follow-up Win+Shift+S bitmap event does not hang a second copy.
                 _lastFolderPegTick = Environment.TickCount64;
-                AfterPegMirrored(view, fromClipboard: true);
             });
         }
         catch (Exception ex)
@@ -1022,20 +1005,6 @@ public void ShowSettings()
 
         DropViews(result.Trimmed);
         return view;
-    }
-
-    private void AfterPegMirrored(PegView? view, bool fromClipboard)
-    {
-        if (view is null)
-        {
-            return;
-        }
-
-        // Post-snip mini bar still works with the rope overlay.
-        if (fromClipboard)
-        {
-            _actionBar?.ShowFor(view);
-        }
     }
 
     private void DropViews(IReadOnlyList<PegRecord> records)
