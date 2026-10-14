@@ -31,7 +31,6 @@ public sealed class AppHost
     private HotkeyHook? _screenshotHotkey;
     private ClipboardMonitor? _clipboard;
     private RopeOverlayForm? _rope;
-    private DockOverlayForm? _dock;
     private SnipActionBarForm? _actionBar;
     private Microsoft.UI.Xaml.Window? _keepAlive;
     private SettingsWindow? _settingsWindow;
@@ -58,12 +57,9 @@ public sealed class AppHost
 
     public bool IsRopeVisible => _settings.RopeVisible;
 
-    public bool IsDockSkin =>
-        string.Equals(_settings.OverlaySkin, "Dock", StringComparison.OrdinalIgnoreCase);
-
     public bool IsActionBarOpen => _actionBar?.IsOpen == true;
 
-    public string OverlaySkin => _settings.OverlaySkin;
+    public string OverlaySkin => "Rope";
 
     public string HotkeyLabel =>
         HotkeyGesture.TryParse(_settings.Hotkey, out var gesture)
@@ -143,68 +139,27 @@ public sealed class AppHost
         _store.Save(_settings);
         if (visible)
         {
-            if (IsDockSkin)
-            {
-                _dock?.ShowDock();
-            }
-            else
-            {
-                _rope?.ShowRope();
-            }
+            _rope?.ShowRope();
         }
         else
         {
             _actionBar?.Dismiss();
-            if (IsDockSkin)
-            {
-                _dock?.HideDock();
-            }
-            else
-            {
-                _rope?.HideRope();
-            }
+            _rope?.HideRope();
         }
     }
 
-    public void SetOverlaySkin(string skin)
+        public void NotifyActionBarChanged()
     {
-        var normalized = string.Equals(skin, "Rope", StringComparison.OrdinalIgnoreCase) ? "Rope" : "Dock";
-        if (string.Equals(_settings.OverlaySkin, normalized, StringComparison.OrdinalIgnoreCase)
-            && ((normalized == "Dock" && _dock is not null) || (normalized == "Rope" && _rope is not null)))
-        {
-            return;
-        }
-
-        _settings.OverlaySkin = normalized;
-        _store.Save(_settings);
-        _actionBar?.Dismiss();
-        DisposeOverlays();
-        CreateOverlayForSkin();
-        OverlayStatus("已切换为" + (IsDockSkin ? "侧边暂存坞" : "顶部晾衣绳"));
-    }
-
-    public void NotifyActionBarChanged()
-    {
-        _dock?.SetKeepOpen(IsActionBarOpen);
+        // Action bar floats independently; rope overlay needs no keep-open flag.
     }
 
     private void CreateOverlayForSkin()
     {
-        if (IsDockSkin)
+        _settings.OverlaySkin = "Rope";
+        _rope = new RopeOverlayForm(this);
+        if (_settings.RopeVisible)
         {
-            _dock = new DockOverlayForm(this);
-            if (_settings.RopeVisible)
-            {
-                _dock.ShowDock();
-            }
-        }
-        else
-        {
-            _rope = new RopeOverlayForm(this);
-            if (_settings.RopeVisible)
-            {
-                _rope.ShowRope();
-            }
+            _rope.ShowRope();
         }
     }
 
@@ -216,31 +171,16 @@ public sealed class AppHost
             _rope.Close();
             _rope = null;
         }
-
-        if (_dock is not null)
-        {
-            _dock.AllowClose = true;
-            _dock.Close();
-            _dock = null;
-        }
     }
 
     private void OverlayStatus(string text)
     {
-        if (IsDockSkin)
-        {
-            _dock?.ShowStatus(text);
-        }
-        else
-        {
-            _rope?.ShowStatus(text);
-        }
+        _rope?.ShowStatus(text);
     }
 
-    private IntPtr OverlayHwnd =>
-        IsDockSkin ? (_dock?.Hwnd ?? IntPtr.Zero) : (_rope?.Hwnd ?? IntPtr.Zero);
+    private IntPtr OverlayHwnd => _rope?.Hwnd ?? IntPtr.Zero;
 
-    public void ShowSettings()
+public void ShowSettings()
     {
         if (_settingsWindow is null)
         {
@@ -288,15 +228,7 @@ public sealed class AppHost
 
     public void DiscardPeg(PegView peg)
     {
-        if (IsDockSkin)
-        {
-            if (_dock is not null)
-            {
-                _dock.BeginDiscard(peg);
-                return;
-            }
-        }
-        else if (_rope is not null)
+        if (_rope is not null)
         {
             _rope.BeginDiscard(peg);
             return;
@@ -1067,8 +999,32 @@ public sealed class AppHost
                     return;
                 }
 
-                var view = Mirror(_board.AddOrBump(captured.Value.Path, captured.Value.Origin, _settings.MaxPegs));
-                RememberContentHash(captured.Value.Path);
+                var capturedPath = captured.Value.Path;
+                if (TryFindDuplicateByContent(capturedPath, out var existing) && existing is not null)
+                {
+                    var bumped = Mirror(_board.AddOrBump(existing, PegOrigin.Folder, _settings.MaxPegs));
+                    try
+                    {
+                        if (File.Exists(capturedPath)
+                            && !capturedPath.Equals(existing, StringComparison.OrdinalIgnoreCase))
+                        {
+                            File.Delete(capturedPath);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        App.Log(ex);
+                    }
+
+                    // Treat clipboard hang like a folder peg so the follow-up
+                    // Win+Shift+S bitmap event does not hang a second copy.
+                    _lastFolderPegTick = Environment.TickCount64;
+                    AfterPegMirrored(bumped, fromClipboard: true);
+                    return;
+                }
+
+                var view = Mirror(_board.AddOrBump(capturedPath, captured.Value.Origin, _settings.MaxPegs));
+                RememberContentHash(capturedPath);
                 // Treat clipboard StorageItems / bitmap hang like a folder peg so the
                 // follow-up Win+Shift+S bitmap event does not hang a second copy.
                 _lastFolderPegTick = Environment.TickCount64;
@@ -1111,13 +1067,13 @@ public sealed class AppHost
 
     private void AfterPegMirrored(PegView? view, bool fromClipboard)
     {
-        if (view is null || !IsDockSkin)
+        if (view is null)
         {
             return;
         }
 
-        _dock?.NoteNewPeg();
-        if (fromClipboard || IsDockSkin)
+        // Post-snip mini bar still works with the rope overlay.
+        if (fromClipboard)
         {
             _actionBar?.ShowFor(view);
         }
@@ -1142,7 +1098,7 @@ public sealed class AppHost
             Pegs[index].Tilt = PegView.TiltFor(index);
         }
 
-        if (IsDockSkin) { _dock?.UpdateEmpty(); } else { _rope?.UpdateEmpty(); }
+        _rope?.UpdateEmpty();
     }
 
     private void EnsureDefaultFolder()

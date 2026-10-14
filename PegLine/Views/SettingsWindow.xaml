@@ -9,19 +9,14 @@
             <StackPanel Spacing="16" MaxWidth="520">
                 <StackPanel Spacing="4">
                     <TextBlock FontFamily="Microsoft YaHei UI" FontSize="28" FontWeight="SemiBold" Foreground="#2C2416" Text="挂绳" />
-                    <TextBlock FontSize="14" Foreground="#6F6256" TextWrapping="Wrap" Text="PegLine 把最近的截图暂存在屏幕边。图片和设置只留在这台电脑上。" />
+                    <TextBlock FontSize="14" Foreground="#6F6256" TextWrapping="Wrap" Text="PegLine 把最近的截图挂在屏幕顶部晾衣绳上。图片和设置只留在这台电脑上。" />
                 </StackPanel>
 
                 <Border Background="#FFF9F2" BorderBrush="#E4D3BC" BorderThickness="1" CornerRadius="12" Padding="16">
                     <StackPanel Spacing="10">
                         <TextBlock FontFamily="Microsoft YaHei UI" FontWeight="SemiBold" Foreground="#2C2416" Text="显示  ·  Overlay" />
-                        <TextBlock Foreground="#2C2416" Text="显示样式" />
-                        <ComboBox x:Name="SkinCombo" HorizontalAlignment="Stretch" SelectionChanged="SkinCombo_SelectionChanged">
-                            <ComboBoxItem Content="侧边暂存坞" Tag="Dock" />
-                            <ComboBoxItem Content="顶部晾衣绳" Tag="Rope" />
-                        </ComboBox>
                         <TextBlock FontSize="12" Foreground="#6F6256" TextWrapping="Wrap"
-                                   Text="默认侧边暂存坞：截图后出现迷你操作条，卡片叠在屏幕右侧。也可切回顶部晾衣绳。" />
+                                   Text="图片挂在屏幕顶部的晾衣绳上。截图或剪贴板有新图时会自动挂上。" />
                         <TextBlock FontFamily="Microsoft YaHei UI" FontWeight="SemiBold" Foreground="#2C2416" Text="容量与热键" Margin="0,8,0,0" />
                         <Grid ColumnSpacing="12">
                             <Grid.ColumnDefinitions>

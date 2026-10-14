@@ -45,7 +45,6 @@ public sealed partial class SettingsWindow : Window
         var slider = Math.Clamp(settings.MaxPegs, (int)MaxPegsSlider.Minimum, (int)MaxPegsSlider.Maximum);
         MaxPegsSlider.Value = slider;
         MaxPegsValue.Text = settings.MaxPegs.ToString();
-        SelectSkinCombo(settings.OverlaySkin);
         HotkeyBox.Text = _host.HotkeyLabel;
         HotkeyStatus.Text = _host.HotkeyStatusText;
         ScreenshotHotkeyBox.Text = _host.ScreenshotHotkeyLabel;
@@ -203,35 +202,7 @@ public sealed partial class SettingsWindow : Window
     }
 
 
-    private void SelectSkinCombo(string skin)
-    {
-        var wantDock = !string.Equals(skin, "Rope", StringComparison.OrdinalIgnoreCase);
-        for (var i = 0; i < SkinCombo.Items.Count; i++)
-        {
-            if (SkinCombo.Items[i] is ComboBoxItem item
-                && item.Tag is string tag
-                && ((wantDock && tag == "Dock") || (!wantDock && tag == "Rope")))
-            {
-                SkinCombo.SelectedIndex = i;
-                return;
-            }
-        }
 
-        SkinCombo.SelectedIndex = 0;
-    }
-
-    private void SkinCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_loading)
-        {
-            return;
-        }
-
-        if (SkinCombo.SelectedItem is ComboBoxItem { Tag: string tag })
-        {
-            _host.SetOverlaySkin(tag);
-        }
-    }
 
     private void Done_Click(object sender, RoutedEventArgs e) => Close();
 

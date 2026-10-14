@@ -27,8 +27,8 @@ public sealed class AppSettings
 
     public bool RopeVisible { get; set; } = true;
 
-    /// <summary>Overlay skin: "Dock" (side staging dock, default) or "Rope" (top clothesline).</summary>
-    public string OverlaySkin { get; set; } = "Dock";
+    /// <summary>Overlay skin. Only "Rope" (top clothesline) is supported; Dock was removed.</summary>
+    public string OverlaySkin { get; set; } = "Rope";
 
     /// <summary>
     /// Files the user took off the rope without deleting. A later Created event puts them back.
@@ -42,16 +42,8 @@ public sealed class AppSettings
         Hotkey ??= DefaultHotkey;
         ScreenshotHotkey ??= DefaultScreenshotHotkey;
 
-        if (string.IsNullOrWhiteSpace(OverlaySkin)
-            || (!OverlaySkin.Equals("Dock", StringComparison.OrdinalIgnoreCase)
-                && !OverlaySkin.Equals("Rope", StringComparison.OrdinalIgnoreCase)))
-        {
-            OverlaySkin = "Dock";
-        }
-        else
-        {
-            OverlaySkin = OverlaySkin.Equals("Rope", StringComparison.OrdinalIgnoreCase) ? "Rope" : "Dock";
-        }
+        // Force rope-only; migrate any saved "Dock" preference.
+        OverlaySkin = "Rope";
 
         if (MaxPegs < MinPegs)
         {
