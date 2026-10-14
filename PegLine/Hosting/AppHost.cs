@@ -28,7 +28,6 @@ public sealed class AppHost
     private MessageWindow? _messages;
     private TrayIcon? _tray;
     private HotkeyHook? _hotkey;
-    private HotkeyHook? _screenshotHotkey;
     private ClipboardMonitor? _clipboard;
     private RopeOverlayForm? _rope;
     private SnipActionBarForm? _actionBar;
@@ -71,15 +70,7 @@ public sealed class AppHost
             ? "显示/隐藏热键可用。"
             : "显示/隐藏热键被占用。绳子仍可从托盘打开。";
 
-    public string ScreenshotHotkeyLabel =>
-        HotkeyGesture.TryParse(_settings.ScreenshotHotkey, out var gesture)
-            ? gesture.ToDisplayString()
-            : HotkeyGesture.Parse(AppSettings.DefaultScreenshotHotkey).ToDisplayString();
 
-    public string ScreenshotHotkeyStatusText =>
-        _screenshotHotkey?.IsRegistered == true
-            ? "截图热键可用：按下后打开系统截图，截完会自动挂上绳。"
-            : "截图热键被占用。仍可用 Win + Shift + S（需打开剪贴板监视）。";
 
     public void Start()
     {
@@ -98,8 +89,6 @@ public sealed class AppHost
             _messages = new MessageWindow();
             _hotkey = new HotkeyHook(_messages, HotkeyHook.ToggleId);
             _hotkey.Pressed += ToggleRope;
-            _screenshotHotkey = new HotkeyHook(_messages, HotkeyHook.ScreenshotId);
-            _screenshotHotkey.Pressed += LaunchScreenClip;
             _clipboard = new ClipboardMonitor(_messages);
             _clipboard.ClipboardChanged += OnClipboardChanged;
             _tray = new TrayIcon(
@@ -246,7 +235,7 @@ public void ShowSettings()
 
         ForgetContentHash(peg.FilePath);
         Pegs.Remove(peg);
-        var savedRoot = AppSettings.SavedFolder();
+        var savedRoot = _settings.SavedFolder();
         var underSaved = peg.FilePath.StartsWith(savedRoot, StringComparison.OrdinalIgnoreCase);
         var deleteFile = underSaved || peg.Origin == PegOrigin.Clipboard || _settings.DeleteFileOnRemove;
         if (!deleteFile)
@@ -308,7 +297,7 @@ public void ShowSettings()
                 return;
             }
 
-            var folder = AppSettings.SavedFolder();
+            var folder = _settings.SavedFolder();
             Directory.CreateDirectory(folder);
 
             if (peg.FilePath.StartsWith(folder, StringComparison.OrdinalIgnoreCase))
@@ -497,26 +486,54 @@ public void ShowSettings()
         _store.Save(_settings);
     }
 
+    public void SetSavedFolderPath(string? path)
+    {
+        var full = string.IsNullOrWhiteSpace(path) ? null : Path.GetFullPath(path.Trim());
+        if (full is not null && full.Equals(AppSettings.DefaultSavedFolder(), StringComparison.OrdinalIgnoreCase))
+        {
+            full = null;
+        }
+
+        var current = _settings.SavedFolder();
+        var next = full ?? AppSettings.DefaultSavedFolder();
+        if (current.Equals(next, StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrWhiteSpace(_settings.SavedFolderPath) == (full is null))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(next);
+        }
+        catch (Exception ex)
+        {
+            App.Log(ex);
+            OverlayStatus("Saved 文件夹创建失败");
+            return;
+        }
+
+        _settings.SavedFolderPath = full;
+        _store.Save(_settings);
+        _watcher.SetFolders(_settings.ResolveWatchFolders());
+        FillFromFolders();
+        OverlayStatus("Saved 文件夹已更新");
+    }
+
+
     public void PauseHotkey()
     {
         _hotkey?.Unregister();
-        _screenshotHotkey?.Unregister();
     }
 
     public bool ResumeHotkey()
     {
-        var okToggle = false;
         if (_hotkey is not null && HotkeyGesture.TryParse(_settings.Hotkey, out var toggle))
         {
-            okToggle = _hotkey.Register(toggle);
+            return _hotkey.Register(toggle);
         }
 
-        if (_screenshotHotkey is not null && HotkeyGesture.TryParse(_settings.ScreenshotHotkey, out var shot))
-        {
-            _screenshotHotkey.Register(shot);
-        }
-
-        return okToggle;
+        return false;
     }
 
     public bool TrySetHotkey(HotkeyGesture gesture, out string? error)
@@ -524,68 +541,11 @@ public void ShowSettings()
         _settings.Hotkey = gesture.ToStorageString();
         _store.Save(_settings);
         var registered = _hotkey?.Register(gesture) == true;
-        // keep screenshot hotkey registered
-        if (_screenshotHotkey is not null && HotkeyGesture.TryParse(_settings.ScreenshotHotkey, out var shot))
-        {
-            _screenshotHotkey.Register(shot);
-        }
-
-        error = registered ? null : "这个热键被其他程序占用了。";
+        error = registered ? null : "这个热键登记不上，可能被占用了。";
         return registered;
     }
 
-    public bool TrySetScreenshotHotkey(HotkeyGesture gesture, out string? error)
-    {
-        if (HotkeyGesture.TryParse(_settings.Hotkey, out var toggle)
-            && toggle.Modifiers == gesture.Modifiers
-            && toggle.VirtualKey == gesture.VirtualKey)
-        {
-            error = "不能和「显示/隐藏绳子」用同一个热键。";
-            return false;
-        }
 
-        _settings.ScreenshotHotkey = gesture.ToStorageString();
-        _store.Save(_settings);
-        var registered = _screenshotHotkey?.Register(gesture) == true;
-        if (_hotkey is not null && HotkeyGesture.TryParse(_settings.Hotkey, out var keep))
-        {
-            _hotkey.Register(keep);
-        }
-
-        error = registered ? null : "这个热键被其他程序占用了。";
-        return registered;
-    }
-
-    public void LaunchScreenClip()
-    {
-        try
-        {
-            // Same overlay family as Win+Shift+S; result goes to clipboard → PegLine hangs it.
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "ms-screenclip:",
-                UseShellExecute = true,
-            });
-            OverlayStatus("框选截图…");
-        }
-        catch (Exception ex)
-        {
-            App.Log(ex);
-            try
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "SnippingTool.exe",
-                    UseShellExecute = true,
-                });
-            }
-            catch (Exception ex2)
-            {
-                App.Log(ex2);
-                _dispatcher.TryEnqueue(() => OverlayStatus("打不开截图工具"));
-            }
-        }
-    }
 
     public IReadOnlyList<FolderRow> FolderRows() =>
         _settings.ExtraFolders
@@ -610,7 +570,6 @@ public void ShowSettings()
             _tray?.Dispose();
             _clipboard?.Dispose();
             _hotkey?.Dispose();
-            _screenshotHotkey?.Dispose();
             _watcher.Dispose();
             _messages?.Dispose();
             if (_settingsWindow is not null)
@@ -638,7 +597,7 @@ public void ShowSettings()
     {
         try
         {
-            var dest = AppSettings.SavedFolder();
+            var dest = _settings.SavedFolder();
             Directory.CreateDirectory(dest);
             var legacy = AppSettings.LegacySavedFolder();
             if (!Directory.Exists(legacy)

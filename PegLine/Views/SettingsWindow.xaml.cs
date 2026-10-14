@@ -47,8 +47,10 @@ public sealed partial class SettingsWindow : Window
         MaxPegsValue.Text = settings.MaxPegs.ToString();
         HotkeyBox.Text = _host.HotkeyLabel;
         HotkeyStatus.Text = _host.HotkeyStatusText;
-        ScreenshotHotkeyBox.Text = _host.ScreenshotHotkeyLabel;
-        ScreenshotHotkeyStatus.Text = _host.ScreenshotHotkeyStatusText;
+        SavedFolderPathText.Text = _host.Settings.SavedFolder();
+        SavedFolderHint.Text = string.IsNullOrWhiteSpace(_host.Settings.SavedFolderPath)
+            ? @"当前为默认路径（%LOCALAPPDATA%\PegLine\Saved）。"
+            : "当前为自定义路径。";
         SettingsPathText.Text = new SettingsStore().FilePath;
         _loading = false;
     }
@@ -146,7 +148,6 @@ public sealed partial class SettingsWindow : Window
     {
         _host.ResumeHotkey();
         HotkeyStatus.Text = _host.HotkeyStatusText;
-        ScreenshotHotkeyStatus.Text = _host.ScreenshotHotkeyStatusText;
     }
 
     private void HotkeyBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
@@ -204,60 +205,42 @@ public sealed partial class SettingsWindow : Window
 
 
 
+
+    private async void BrowseSavedFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new FolderPicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+        };
+        picker.FileTypeFilter.Add("*");
+        InitializeWithWindow.Initialize(picker, _hwnd);
+        var folder = await picker.PickSingleFolderAsync();
+        if (folder is null)
+        {
+            return;
+        }
+
+        var path = folder.Path;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _host.SetSavedFolderPath(path);
+            SavedFolderPathText.Text = _host.Settings.SavedFolder();
+            SavedFolderHint.Text = string.IsNullOrWhiteSpace(_host.Settings.SavedFolderPath)
+                ? @"当前为默认路径（%LOCALAPPDATA%\PegLine\Saved）。"
+                : "当前为自定义路径。";
+        });
+    }
+
+    private void ResetSavedFolder_Click(object sender, RoutedEventArgs e)
+    {
+        _host.SetSavedFolderPath(null);
+        SavedFolderPathText.Text = _host.Settings.SavedFolder();
+        SavedFolderHint.Text = @"当前为默认路径（%LOCALAPPDATA%\PegLine\Saved）。";
+    }
+
     private void Done_Click(object sender, RoutedEventArgs e) => Close();
 
 
-    private void ScreenshotHotkeyBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        e.Handled = true;
-        if (e.Key is VirtualKey.Escape or VirtualKey.Tab)
-        {
-            ScreenshotHotkeyBox.Text = _host.ScreenshotHotkeyLabel;
-            return;
-        }
-
-        if (IsModifier(e.Key))
-        {
-            return;
-        }
-
-        var modifiers = HotkeyModifiers.None;
-        if (IsDown(VirtualKey.Control))
-        {
-            modifiers |= HotkeyModifiers.Control;
-        }
-
-        if (IsDown(VirtualKey.Menu))
-        {
-            modifiers |= HotkeyModifiers.Alt;
-        }
-
-        if (IsDown(VirtualKey.Shift))
-        {
-            modifiers |= HotkeyModifiers.Shift;
-        }
-
-        if (IsDown(VirtualKey.LeftWindows) || IsDown(VirtualKey.RightWindows))
-        {
-            modifiers |= HotkeyModifiers.Windows;
-        }
-
-        if (!HotkeyGesture.TryFromVirtualKey(modifiers, (int)e.Key, out var gesture))
-        {
-            ScreenshotHotkeyStatus.Text = "这个键不能当热键。试 Ctrl + Shift + 字母。";
-            return;
-        }
-
-        ScreenshotHotkeyBox.Text = gesture.ToDisplayString();
-        if (_host.TrySetScreenshotHotkey(gesture, out var error))
-        {
-            ScreenshotHotkeyStatus.Text = "已登记 " + gesture.ToDisplayString() + "。截完会自动挂上绳。";
-        }
-        else
-        {
-            ScreenshotHotkeyStatus.Text = error ?? "这个热键被其他程序占用了。";
-        }
-    }
 
     private static bool IsModifier(VirtualKey key) =>
         key is VirtualKey.Control or VirtualKey.LeftControl or VirtualKey.RightControl

@@ -24,7 +24,7 @@ PegLine 是一款 Windows 桌面小工具。新的截图，以及你开启后的
 | 路径 | 内容 |
 | --- | --- |
 | `%LOCALAPPDATA%\PegLine\settings.json` | 设置 |
-| `%LOCALAPPDATA%\PegLine\Saved\` | 「存到 Saved」的图片 |
+| `%LOCALAPPDATA%\PegLine\Saved\` | 「存到 Saved」的图片（设置里可改成其他文件夹） |
 | `%LOCALAPPDATA%\PegLine\clipboard\` | 从剪贴板落下的 PNG 缓存 |
 | `%LOCALAPPDATA%\PegLine\error.log` | 仅异常时追加 |
 | `%LOCALAPPDATA%\PegLine\instance.lock` | 单实例锁 |

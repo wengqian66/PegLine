@@ -5,7 +5,6 @@ namespace PegLine.Platform;
 internal sealed class HotkeyHook : IDisposable
 {
     public const int ToggleId = 0x5047;
-    public const int ScreenshotId = 0x5048;
 
     private readonly MessageWindow _window;
     private readonly int _id;

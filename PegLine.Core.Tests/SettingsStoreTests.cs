@@ -35,7 +35,7 @@ public class SettingsStoreTests
 
         var folders = settings.ResolveWatchFolders();
 
-        Assert.Contains(AppSettings.SavedFolder(), folders, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(settings.SavedFolder(), folders, StringComparer.OrdinalIgnoreCase);
         Assert.Contains(folders, f => f.EndsWith(Path.Combine("Pictures", "Screenshots"), StringComparison.OrdinalIgnoreCase));
         Assert.Contains(Path.GetFullPath(extra), folders, StringComparer.OrdinalIgnoreCase);
         Assert.Equal(folders.Count, folders.Distinct(StringComparer.OrdinalIgnoreCase).Count());
@@ -76,6 +76,7 @@ public class SettingsStoreTests
             WatchClipboard = true,
             DeleteFileOnRemove = true,
             RopeVisible = false,
+            SavedFolderPath = Path.Combine(directory, "MySaved"),
         };
         original.Dismiss(Path.Combine(extra, "old.png"));
 
@@ -89,6 +90,8 @@ public class SettingsStoreTests
         Assert.True(loaded.WatchClipboard);
         Assert.True(loaded.DeleteFileOnRemove);
         Assert.False(loaded.RopeVisible);
+        Assert.Equal(Path.GetFullPath(Path.Combine(directory, "MySaved")), loaded.SavedFolderPath, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(Path.GetFullPath(Path.Combine(directory, "MySaved")), loaded.SavedFolder(), StringComparer.OrdinalIgnoreCase);
         Assert.True(loaded.IsDismissed(Path.Combine(extra, "old.png")));
     }
 
@@ -105,5 +108,35 @@ public class SettingsStoreTests
         Assert.True(settings.WatchClipboard);
         Assert.False(settings.DeleteFileOnRemove);
         Assert.True(settings.RopeVisible);
+        Assert.Null(settings.SavedFolderPath);
+        Assert.Equal(AppSettings.DefaultSavedFolder(), settings.SavedFolder(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SavedFolder_CustomPath_IsUsedInWatchFolders()
+    {
+        var custom = Path.Combine(Path.GetTempPath(), "pegline-saved-" + Guid.NewGuid().ToString("N"));
+        var settings = new AppSettings
+        {
+            IncludeDefaultScreenshotsFolder = false,
+            SavedFolderPath = custom,
+        };
+        settings.Normalize();
+
+        Assert.Equal(Path.GetFullPath(custom), settings.SavedFolder(), StringComparer.OrdinalIgnoreCase);
+        var folders = settings.ResolveWatchFolders();
+        Assert.Contains(Path.GetFullPath(custom), folders, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SavedFolder_DefaultEqualsLocalAppData()
+    {
+        var settings = new AppSettings();
+        settings.Normalize();
+        Assert.Null(settings.SavedFolderPath);
+        Assert.Equal(AppSettings.DefaultSavedFolder(), settings.SavedFolder());
+        Assert.Contains("PegLine", settings.SavedFolder());
+        Assert.EndsWith("Saved", settings.SavedFolder(), StringComparison.OrdinalIgnoreCase);
     }
 }
+

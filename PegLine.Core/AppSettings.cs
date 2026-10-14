@@ -8,7 +8,6 @@ public sealed class AppSettings
     public const int MinPegs = 1;
     public const int MaxPegsLimit = 40;
     public const string DefaultHotkey = "Ctrl+Alt+T";
-    public const string DefaultScreenshotHotkey = "Ctrl+Shift+S";
 
     public bool IncludeDefaultScreenshotsFolder { get; set; } = true;
 
@@ -17,9 +16,6 @@ public sealed class AppSettings
     public int MaxPegs { get; set; } = 12;
 
     public string Hotkey { get; set; } = DefaultHotkey;
-
-    /// <summary>Global hotkey that opens the Windows snipping overlay (same idea as Win+Shift+S).</summary>
-    public string ScreenshotHotkey { get; set; } = DefaultScreenshotHotkey;
 
     public bool WatchClipboard { get; set; } = true;
 
@@ -31,6 +27,11 @@ public sealed class AppSettings
     public string OverlaySkin { get; set; } = "Rope";
 
     /// <summary>
+    /// Optional custom Saved folder. Empty/null uses <see cref="DefaultSavedFolder"/>.
+    /// </summary>
+    public string? SavedFolderPath { get; set; }
+
+    /// <summary>
     /// Files the user took off the rope without deleting. A later Created event puts them back.
     /// </summary>
     public List<string> DismissedPaths { get; set; } = [];
@@ -40,7 +41,6 @@ public sealed class AppSettings
         ExtraFolders ??= [];
         DismissedPaths ??= [];
         Hotkey ??= DefaultHotkey;
-        ScreenshotHotkey ??= DefaultScreenshotHotkey;
 
         // Force rope-only; migrate any saved "Dock" preference.
         OverlaySkin = "Rope";
@@ -65,9 +65,11 @@ public sealed class AppSettings
             ? gesture.ToStorageString()
             : DefaultHotkey;
 
-        ScreenshotHotkey = HotkeyGesture.TryParse(ScreenshotHotkey, out var shot)
-            ? shot.ToStorageString()
-            : DefaultScreenshotHotkey;
+        var customSaved = TryFull(SavedFolderPath);
+        SavedFolderPath = customSaved is not null
+            && !customSaved.Equals(DefaultSavedFolder(), StringComparison.OrdinalIgnoreCase)
+            ? customSaved
+            : null;
 
         DismissedPaths = DismissedPaths
             .Select(TryFull)
@@ -110,7 +112,7 @@ public sealed class AppSettings
         DismissedPaths.RemoveAll(item => item.Equals(full, StringComparison.OrdinalIgnoreCase));
     }
 
-        public IReadOnlyList<string> ResolveWatchFolders()
+    public IReadOnlyList<string> ResolveWatchFolders()
     {
         var folders = new List<string>();
         try
@@ -158,7 +160,14 @@ public sealed class AppSettings
             .ToList();
     }
 
-        public static string SavedFolder() =>
+    /// <summary>Resolved Saved folder: custom path if set, otherwise LocalAppData\PegLine\Saved.</summary>
+    public string SavedFolder()
+    {
+        var custom = TryFull(SavedFolderPath);
+        return custom ?? DefaultSavedFolder();
+    }
+
+    public static string DefaultSavedFolder() =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "PegLine",

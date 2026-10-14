@@ -37,23 +37,20 @@
                             GotFocus="HotkeyBox_GotFocus"
                             LostFocus="HotkeyBox_LostFocus" />
                         <TextBlock x:Name="HotkeyStatus" FontSize="12" Foreground="#6F6256" TextWrapping="Wrap" />
-                        <TextBlock Foreground="#2C2416" Text="截图并挂上绳" />
-                        <TextBox
-                            x:Name="ScreenshotHotkeyBox"
-                            FontFamily="Consolas, Microsoft YaHei UI"
-                            IsSpellCheckEnabled="False"
-                            PlaceholderText="点这里，然后按下组合键"
-                            PreviewKeyDown="ScreenshotHotkeyBox_PreviewKeyDown"
-                            GotFocus="HotkeyBox_GotFocus"
-                            LostFocus="HotkeyBox_LostFocus" />
-                        <TextBlock x:Name="ScreenshotHotkeyStatus" FontSize="12" Foreground="#6F6256" TextWrapping="Wrap"
-                                   Text="默认 Ctrl+Shift+S。会打开系统截图；截完后若开了剪贴板监视，会自动挂上。Win+Shift+S 仍然可用。" />
                     </StackPanel>
                 </Border>
 
                 <Border Background="#FFF9F2" BorderBrush="#E4D3BC" BorderThickness="1" CornerRadius="12" Padding="16">
                     <StackPanel Spacing="10">
                         <TextBlock FontFamily="Microsoft YaHei UI" FontWeight="SemiBold" Foreground="#2C2416" Text="文件夹  ·  Folders" />
+                        <TextBlock Foreground="#2C2416" Text="Saved 保存文件夹" />
+                        <TextBlock x:Name="SavedFolderPathText" FontFamily="Consolas, Microsoft YaHei UI" FontSize="12" Foreground="#2C2416" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                        <TextBlock x:Name="SavedFolderHint" FontSize="12" Foreground="#6F6256" TextWrapping="Wrap"
+                                   Text="右键「存到 Saved」会复制到这里。默认是本机 %LOCALAPPDATA%\PegLine\Saved，GitHub 安装用户每人一份。" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="浏览…" Click="BrowseSavedFolder_Click" />
+                            <Button Content="恢复默认" Click="ResetSavedFolder_Click" />
+                        </StackPanel>
                         <ToggleSwitch
                             x:Name="DefaultFolderSwitch"
                             Header="默认截图文件夹"
