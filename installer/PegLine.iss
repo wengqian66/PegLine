@@ -1,8 +1,8 @@
-; PegLine installer â€” Inno Setup 6
+; PegLine installer â€?Inno Setup 6
 ; Built by scripts/publish-installer.ps1
 #define MyAppName "PegLine"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.2"
+  #define MyAppVersion "1.0.3"
 #endif
 #define MyAppPublisher "PegLine"
 #define MyAppExeName "PegLine.exe"
