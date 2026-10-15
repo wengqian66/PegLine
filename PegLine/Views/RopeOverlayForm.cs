@@ -39,7 +39,6 @@ internal sealed class RopeOverlayForm : IDisposable
     private float _reveal; // 0 hidden .. 1 shown
     private int _revealDir; // -1 hide, 0 idle, 1 show
     private bool _emptyGuide;
-    private bool _heldOpen; // user asked to see the rope; idle must not retract it
     private Rectangle _anchor; // last on-screen placement; layered updates must not move this
     private long _revealAnimStart;
     private float _revealAnimFrom;
@@ -106,21 +105,15 @@ internal sealed class RopeOverlayForm : IDisposable
 
     public IntPtr Hwnd => _hwnd;
 
-    /// <summary>True while the rope is on screen or the user has asked it to stay there.</summary>
-    public bool IsShown => _heldOpen || _visible;
+    /// <summary>True while the rope window is on screen, including during the show or hide slide.</summary>
+    public bool IsShown => _visible;
 
     public bool CanShow => _host.Pegs.Count > 0 || _falls.Count > 0 || _emptyGuide;
 
-    public void ShowRope(bool holdOpen = false)
+    public void ShowRope()
     {
-        if (holdOpen)
-        {
-            _heldOpen = true;
-        }
-
         if (_host.Pegs.Count == 0 && _falls.Count == 0 && !_emptyGuide)
         {
-            _heldOpen = false;
             RequestHide(animated: false);
             return;
         }
@@ -162,15 +155,10 @@ internal sealed class RopeOverlayForm : IDisposable
         Render();
     }
 
-    public void HideRope()
-    {
-        _heldOpen = false;
-        RequestHide(animated: true);
-    }
+    public void HideRope() => RequestHide(animated: true);
 
     private void RequestHide(bool animated)
     {
-        _heldOpen = false;
         if (!animated || !_visible || _reveal <= 0.01f)
         {
             _reveal = 0;
@@ -1355,26 +1343,15 @@ internal sealed class RopeOverlayForm : IDisposable
     }
 
     private bool CanIdleHide() =>
-        RopeVisibility.ShouldAutoHide(_heldOpen, _revealDir > 0, _visible, Environment.TickCount64, _idleHideAt);
+        RopeVisibility.ShouldAutoHide(_revealDir > 0, _visible, Environment.TickCount64, _idleHideAt);
 
     private void TickAutoReveal()
     {
         if (!_host.IsRopeVisible)
         {
-            if (_visible || _heldOpen)
+            if (_visible)
             {
                 HideRope();
-            }
-
-            return;
-        }
-
-        // Explicit show stays until the user hides it. Idle must not slide it away.
-        if (_heldOpen)
-        {
-            if (!_visible && (_host.Pegs.Count > 0 || _falls.Count > 0 || _emptyGuide))
-            {
-                ShowRope();
             }
 
             return;

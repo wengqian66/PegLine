@@ -27,7 +27,6 @@ public class RopeVisibilityTests
 
         Assert.Equal(now + RopeVisibility.ShowLingerMs, until);
         Assert.False(RopeVisibility.ShouldAutoHide(
-            heldOpen: false,
             opening: false,
             visuallyVisible: true,
             now: now,
@@ -48,7 +47,6 @@ public class RopeVisibilityTests
     {
         // idleHideAt stays 0 if ShowRope does not extend it, so the next 16ms tick hides.
         Assert.True(RopeVisibility.ShouldAutoHide(
-            heldOpen: false,
             opening: false,
             visuallyVisible: true,
             now: 5_000,
@@ -56,13 +54,26 @@ public class RopeVisibilityTests
     }
 
     [Fact]
-    public void ShouldAutoHide_NotWhileHeldOpenOpeningOrAlreadyHidden()
+    public void ShouldAutoHide_NotWhileOpeningOrAlreadyHidden()
     {
         const long now = 5_000;
 
-        Assert.False(RopeVisibility.ShouldAutoHide(heldOpen: true, opening: false, visuallyVisible: true, now, idleHideAt: 0));
-        Assert.False(RopeVisibility.ShouldAutoHide(heldOpen: false, opening: true, visuallyVisible: true, now, idleHideAt: 0));
-        Assert.False(RopeVisibility.ShouldAutoHide(heldOpen: false, opening: false, visuallyVisible: false, now, idleHideAt: 0));
+        Assert.False(RopeVisibility.ShouldAutoHide(opening: true, visuallyVisible: true, now, idleHideAt: 0));
+        Assert.False(RopeVisibility.ShouldAutoHide(opening: false, visuallyVisible: false, now, idleHideAt: 0));
+    }
+
+    [Fact]
+    public void HotkeyShow_AutoHidesAfterTheLinger()
+    {
+        const long now = 10_000;
+        var until = RopeVisibility.ExtendIdle(idleHideAt: 0, now, RopeVisibility.ShowLingerMs);
+
+        Assert.False(RopeVisibility.ShouldAutoHide(opening: false, visuallyVisible: true, now, until));
+        Assert.True(RopeVisibility.ShouldAutoHide(opening: false, visuallyVisible: true, now: until, idleHideAt: until));
+        // The show slide is still running. Hiding here parks the rope on the top edge.
+        Assert.False(RopeVisibility.ShouldAutoHide(opening: true, visuallyVisible: true, now: until, idleHideAt: 0));
+        // Auto-hide leaves the rope off screen. The next hotkey must show, not turn the switch off.
+        Assert.True(RopeVisibility.ToggleShouldShow(visuallyShown: false, allowed: true, canShow: true));
     }
 
     [Fact]
@@ -71,13 +82,11 @@ public class RopeVisibilityTests
         const long now = 20_000;
 
         Assert.True(RopeVisibility.ShouldAutoHide(
-            heldOpen: false,
             opening: false,
             visuallyVisible: true,
             now,
             idleHideAt: now - 1));
         Assert.False(RopeVisibility.ShouldAutoHide(
-            heldOpen: false,
             opening: false,
             visuallyVisible: true,
             now,
