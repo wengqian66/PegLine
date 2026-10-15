@@ -11,6 +11,7 @@ internal sealed class TrayIcon : IDisposable
     private readonly Action _toggle;
     private readonly Action _openSettings;
     private readonly Action _quit;
+    private readonly Func<IDisposable?>? _keepMenuAboveImages;
     private IntPtr _icon;
     private bool _added;
 
@@ -20,7 +21,8 @@ internal sealed class TrayIcon : IDisposable
         Func<string> hotkeyLabel,
         Action toggle,
         Action openSettings,
-        Action quit)
+        Action quit,
+        Func<IDisposable?>? keepMenuAboveImages = null)
     {
         _window = window;
         _ropeVisible = ropeVisible;
@@ -28,6 +30,7 @@ internal sealed class TrayIcon : IDisposable
         _toggle = toggle;
         _openSettings = openSettings;
         _quit = quit;
+        _keepMenuAboveImages = keepMenuAboveImages;
         _window.Message += OnMessage;
     }
 
@@ -97,16 +100,22 @@ internal sealed class TrayIcon : IDisposable
             NativeMethods.AppendMenu(menu, NativeMethods.MF_STRING, 3, "退出");
 
             NativeMethods.GetCursorPos(out var point);
-            NativeMethods.SetForegroundWindow(_window.Hwnd);
-            var command = NativeMethods.TrackPopupMenu(
-                menu,
-                NativeMethods.TPM_RETURNCMD | NativeMethods.TPM_RIGHTBUTTON | NativeMethods.TPM_NONOTIFY,
-                point.X,
-                point.Y,
-                0,
-                _window.Hwnd,
-                IntPtr.Zero);
-            NativeMethods.PostMessage(_window.Hwnd, NativeMethods.WM_NULL, IntPtr.Zero, IntPtr.Zero);
+            int command;
+            // Same items and owner as before. The hold only drops the rope when the
+            // popup can overlap the cards, then puts topmost back. Hotkeys are untouched.
+            using (_keepMenuAboveImages?.Invoke())
+            {
+                NativeMethods.SetForegroundWindow(_window.Hwnd);
+                command = NativeMethods.TrackPopupMenu(
+                    menu,
+                    NativeMethods.TPM_RETURNCMD | NativeMethods.TPM_RIGHTBUTTON | NativeMethods.TPM_NONOTIFY,
+                    point.X,
+                    point.Y,
+                    0,
+                    _window.Hwnd,
+                    IntPtr.Zero);
+                NativeMethods.PostMessage(_window.Hwnd, NativeMethods.WM_NULL, IntPtr.Zero, IntPtr.Zero);
+            }
 
             switch (command)
             {

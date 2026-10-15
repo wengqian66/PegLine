@@ -97,7 +97,8 @@ public sealed class AppHost
                 () => HotkeyLabel,
                 ToggleRope,
                 ShowSettings,
-                Quit);
+                Quit,
+                () => _rope?.KeepMenuAboveImages());
             _watcher.ImageCreated += OnImageCreated;
             _watcher.ImageChanged += OnImageChanged;
             _watcher.ImageDeleted += OnImageDeleted;
