@@ -45,6 +45,8 @@ internal sealed class RopeOverlayForm : IDisposable
     private bool _pointerOnRope;
     private uint _tickMs;
     private const int AnimTimerId = 1;
+    private readonly PopupZOrder.Session _popup = new();
+    private bool _loweredForMenu;
 
     private sealed record HitZone(Rectangle Bounds, string Kind, string? PegId);
     private sealed class FallAnim
@@ -148,9 +150,23 @@ internal sealed class RopeOverlayForm : IDisposable
         }
 
         PlaceTop(preview: _previewPegId is not null || _falls.Count > 0);
-        Native.ShowWindow(_hwnd, Native.SW_SHOWNOACTIVATE);
-        Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, _anchor.X, _anchor.Y, _anchor.Width, _anchor.Height,
-            Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+        if (_popup.IsOpen)
+        {
+            // ShowWindow inserts HWND_TOP. The rope is not topmost for the menu,
+            // so that would paint the cards over the popup. Show without reordering.
+            if (!_visible)
+            {
+                PositionRope(_popup.Placement, _anchor.X, _anchor.Y, _anchor.Width, _anchor.Height,
+                    Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_SHOWWINDOW);
+            }
+        }
+        else
+        {
+            Native.ShowWindow(_hwnd, Native.SW_SHOWNOACTIVATE);
+            PositionRope(_popup.Placement, _anchor.X, _anchor.Y, _anchor.Width, _anchor.Height,
+                Native.SWP_NOMOVE | Native.SWP_NOSIZE);
+        }
+
         _visible = true;
         Render();
     }
@@ -327,6 +343,12 @@ internal sealed class RopeOverlayForm : IDisposable
 
     private void PlaceTop(bool preview = false)
     {
+        // Resizing or re-topping while the menu is up lets the card pixels cover it again.
+        if (_loweredForMenu)
+        {
+            return;
+        }
+
         var screen = ScreenBounds();
         if (screen.Width <= 0 || screen.Height <= 0)
         {
@@ -349,12 +371,13 @@ internal sealed class RopeOverlayForm : IDisposable
 
         height = Math.Clamp(height, 96, Math.Max(96, screen.Height));
         _anchor = new Rectangle(screen.X, screen.Y, screen.Width, height);
-        Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, _anchor.X, _anchor.Y, _anchor.Width, _anchor.Height, Native.SWP_NOACTIVATE);
+        PositionRope(_popup.Placement, _anchor.X, _anchor.Y, _anchor.Width, _anchor.Height, 0);
     }
 
     private void Render()
     {
-        if (_hwnd == IntPtr.Zero || _disposed)
+        // UpdateLayeredWindow can pull this window back over the open menu.
+        if (_hwnd == IntPtr.Zero || _disposed || _loweredForMenu)
         {
             return;
         }
@@ -1111,16 +1134,20 @@ internal sealed class RopeOverlayForm : IDisposable
             PegLine.Platform.NativeMethods.AppendMenu(menu, PegLine.Platform.NativeMethods.MF_STRING, 7, "取下右侧全部");
 
             PegLine.Platform.NativeMethods.GetCursorPos(out var point);
-            PegLine.Platform.NativeMethods.SetForegroundWindow(_hwnd);
-            var command = PegLine.Platform.NativeMethods.TrackPopupMenu(
-                menu,
-                PegLine.Platform.NativeMethods.TPM_RETURNCMD | PegLine.Platform.NativeMethods.TPM_RIGHTBUTTON | PegLine.Platform.NativeMethods.TPM_NONOTIFY,
-                point.X,
-                point.Y,
-                0,
-                _hwnd,
-                IntPtr.Zero);
-            PegLine.Platform.NativeMethods.PostMessage(_hwnd, PegLine.Platform.NativeMethods.WM_NULL, IntPtr.Zero, IntPtr.Zero);
+            int command;
+            using (KeepMenuAboveImages())
+            {
+                PegLine.Platform.NativeMethods.SetForegroundWindow(_hwnd);
+                command = PegLine.Platform.NativeMethods.TrackPopupMenu(
+                    menu,
+                    PegLine.Platform.NativeMethods.TPM_RETURNCMD | PegLine.Platform.NativeMethods.TPM_RIGHTBUTTON | PegLine.Platform.NativeMethods.TPM_NONOTIFY,
+                    point.X,
+                    point.Y,
+                    0,
+                    _hwnd,
+                    IntPtr.Zero);
+                PegLine.Platform.NativeMethods.PostMessage(_hwnd, PegLine.Platform.NativeMethods.WM_NULL, IntPtr.Zero, IntPtr.Zero);
+            }
 
             switch (command)
             {
@@ -1426,14 +1453,98 @@ internal sealed class RopeOverlayForm : IDisposable
             return;
         }
 
-        Native.SetWindowPos(
-            _hwnd,
-            Native.HWND_TOPMOST,
-            _anchor.X,
-            _anchor.Y,
-            _anchor.Width,
-            _anchor.Height,
-            Native.SWP_NOACTIVATE);
+        PositionRope(_popup.Placement, _anchor.X, _anchor.Y, _anchor.Width, _anchor.Height, 0);
+    }
+
+    /// <summary>
+    /// Drop the rope out of the topmost band until disposed. Peg photos live in
+    /// this layered window, so a menu created while it is HWND_TOPMOST paints
+    /// underneath the cards. The timer must not put it back until the menu returns.
+    /// </summary>
+    public IDisposable KeepMenuAboveImages()
+    {
+        var opening = !_popup.IsOpen;
+        _popup.Begin();
+        // Only the first hold demotes, and only when the popup can actually sit on
+        // the cards. A later HWND_NOTOPMOST would jump the rope above the open menu.
+        // A tray click at the clock, far below a short rope, leaves topmost alone.
+        if (opening && PopupWouldMeetRope())
+        {
+            _loweredForMenu = true;
+            PositionRope(PopupZOrder.RopeBand.BelowMenu, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE);
+        }
+
+        return new MenuHold(this);
+    }
+
+    private void ReleaseMenuHold()
+    {
+        var band = _popup.End();
+        if (band != PopupZOrder.RopeBand.Topmost)
+        {
+            return;
+        }
+
+        if (_loweredForMenu)
+        {
+            PositionRope(band, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE);
+        }
+
+        _loweredForMenu = false;
+    }
+
+    private bool PopupWouldMeetRope()
+    {
+        if (!_visible || _anchor.Width <= 0 || _anchor.Height <= 0)
+        {
+            return false;
+        }
+
+        if (!Native.GetCursorPos(out var pt))
+        {
+            return true;
+        }
+
+        return PopupZOrder.MenuMeetsRope(pt.X, pt.Y, _anchor.X, _anchor.Y, _anchor.Right, _anchor.Bottom);
+    }
+
+    private void PositionRope(PopupZOrder.RopeBand band, int x, int y, int cx, int cy, uint flags)
+    {
+        if (_disposed || _hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        flags |= Native.SWP_NOACTIVATE;
+        var after = IntPtr.Zero;
+        switch (band)
+        {
+            case PopupZOrder.RopeBand.Topmost:
+                after = Native.HWND_TOPMOST;
+                break;
+            case PopupZOrder.RopeBand.BelowMenu:
+                after = Native.HWND_NOTOPMOST;
+                break;
+            default:
+                flags |= Native.SWP_NOZORDER | Native.SWP_NOOWNERZORDER;
+                break;
+        }
+
+        Native.SetWindowPos(_hwnd, after, x, y, cx, cy, flags);
+    }
+
+    private sealed class MenuHold : IDisposable
+    {
+        private RopeOverlayForm? _form;
+
+        public MenuHold(RopeOverlayForm form) => _form = form;
+
+        public void Dispose()
+        {
+            var form = _form;
+            _form = null;
+            form?.ReleaseMenuHold();
+        }
     }
 
     private void EnsureMouseTracking()
@@ -1559,9 +1670,13 @@ internal sealed class RopeOverlayForm : IDisposable
         public const int SW_HIDE = 0;
         public const int SW_SHOWNOACTIVATE = 4;
         public static readonly IntPtr HWND_TOPMOST = new(-1);
+        public static readonly IntPtr HWND_NOTOPMOST = new(-2);
         public const uint SWP_NOSIZE = 0x0001;
         public const uint SWP_NOMOVE = 0x0002;
+        public const uint SWP_NOZORDER = 0x0004;
         public const uint SWP_NOACTIVATE = 0x0010;
+        public const uint SWP_SHOWWINDOW = 0x0040;
+        public const uint SWP_NOOWNERZORDER = 0x0200;
         public const int ERROR_CLASS_ALREADY_EXISTS = 1410;
         public const uint LWA_COLORKEY = 0x00000001;
         public const int SRCCOPY = 0x00CC0020;
