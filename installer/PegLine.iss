@@ -2,7 +2,7 @@
 ; Built by scripts/publish-installer.ps1
 #define MyAppName "PegLine"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.1"
+  #define MyAppVersion "1.0.2"
 #endif
 #define MyAppPublisher "PegLine"
 #define MyAppExeName "PegLine.exe"

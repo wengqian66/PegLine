@@ -70,9 +70,9 @@ powershell -ExecutionPolicy Bypass -File scripts\publish-installer.ps1
 产物：
 
 - `artifacts\publish\win-x64\` — 自包含应用目录
-- `dist\PegLine-Setup-1.0.1.exe` — 安装包
+- `dist\PegLine-Setup-1.0.2.exe` — 安装包
 
-可选参数：`-Version 1.0.1`、`-SkipPublish`、`-SkipInstaller`。
+可选参数：`-Version 1.0.2`、`-SkipPublish`、`-SkipInstaller`。
 
 等价的手动发布命令：
 
