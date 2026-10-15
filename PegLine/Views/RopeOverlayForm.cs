@@ -41,6 +41,8 @@ internal sealed class RopeOverlayForm : IDisposable
     private bool _emptyGuide;
     private bool _heldOpen; // user asked to see the rope; idle must not retract it
     private Rectangle _anchor; // last on-screen placement; layered updates must not move this
+    private long _revealAnimStart;
+    private float _revealAnimFrom;
     private const int AnimTimerId = 1;
 
     private sealed record HitZone(Rectangle Bounds, string Kind, string? PegId);
@@ -95,7 +97,7 @@ internal sealed class RopeOverlayForm : IDisposable
         SyncThumbs();
         Render();
         UpdateEmpty();
-        Native.SetTimer(_hwnd, AnimTimerId, 16, IntPtr.Zero);
+        Native.SetTimer(_hwnd, AnimTimerId, RopeMotion.IdleTickMs, IntPtr.Zero);
     }
 
     public bool AllowClose { get; set; }
@@ -135,7 +137,21 @@ internal sealed class RopeOverlayForm : IDisposable
             _reveal = 0.05f;
         }
 
-        _revealDir = 1;
+        // Don't restart the clock when ShowRope is called again mid-slide (hover
+        // keep-alive). Restarting would pin the rope at the top of the slide.
+        if (_revealDir != 1)
+        {
+            if (_reveal >= 0.999f)
+            {
+                _reveal = 1f;
+                _revealDir = 0;
+            }
+            else
+            {
+                BeginReveal(1);
+            }
+        }
+
         PlaceTop(preview: _previewPegId is not null || _falls.Count > 0);
         Native.ShowWindow(_hwnd, Native.SW_SHOWNOACTIVATE);
         Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, _anchor.X, _anchor.Y, _anchor.Width, _anchor.Height,
@@ -157,12 +173,35 @@ internal sealed class RopeOverlayForm : IDisposable
         {
             _reveal = 0;
             _revealDir = 0;
+            UseIdleTick();
             Native.ShowWindow(_hwnd, Native.SW_HIDE);
             _visible = false;
             return;
         }
 
-        _revealDir = -1;
+        if (_revealDir != -1)
+        {
+            BeginReveal(-1);
+        }
+    }
+
+    private void BeginReveal(int direction)
+    {
+        _revealAnimFrom = _reveal;
+        _revealAnimStart = Environment.TickCount64;
+        _revealDir = direction;
+        if (_hwnd != IntPtr.Zero)
+        {
+            Native.SetTimer(_hwnd, AnimTimerId, RopeMotion.AnimTickMs, IntPtr.Zero);
+        }
+    }
+
+    private void UseIdleTick()
+    {
+        if (_hwnd != IntPtr.Zero)
+        {
+            Native.SetTimer(_hwnd, AnimTimerId, RopeMotion.IdleTickMs, IntPtr.Zero);
+        }
     }
 
 
@@ -356,20 +395,8 @@ internal sealed class RopeOverlayForm : IDisposable
             }
         }
 
-        if (_reveal < 0.999f)
-        {
-            using var faded = new Bitmap(bmp.Width, bmp.Height, PixelFormat.Format32bppArgb);
-            using var fg = Graphics.FromImage(faded);
-            var attrs = new System.Drawing.Imaging.ImageAttributes();
-            attrs.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix { Matrix33 = Math.Clamp(_reveal, 0f, 1f) });
-            fg.DrawImage(bmp, new Rectangle(0, 0, bmp.Width, bmp.Height), 0, 0, bmp.Width, bmp.Height, GraphicsUnit.Pixel, attrs);
-            attrs.Dispose();
-            PushLayer(faded);
-        }
-        else
-        {
-            PushLayer(bmp);
-        }
+        // Fade in the premultiply pass. A second full-width bitmap was most of the hitch.
+        PushLayer(bmp, _reveal >= 0.999f ? 1f : Math.Clamp(_reveal, 0f, 1f));
     }
 
 
@@ -746,9 +773,9 @@ internal sealed class RopeOverlayForm : IDisposable
         g.FillPath(brush, path);
     }
 
-    private void PushLayer(Bitmap bmp)
+    private void PushLayer(Bitmap bmp, float opacity = 1f)
     {
-        using var premul = ToPremultiplied(bmp);
+        using var premul = ToPremultiplied(bmp, opacity);
         var screenDc = Native.GetDC(IntPtr.Zero);
         var memDc = Native.CreateCompatibleDC(screenDc);
         var hBitmap = premul.GetHbitmap(Color.FromArgb(0));
@@ -788,40 +815,35 @@ internal sealed class RopeOverlayForm : IDisposable
         Native.ReleaseDC(IntPtr.Zero, screenDc);
     }
 
-    private static Bitmap ToPremultiplied(Bitmap src)
+    private static Bitmap ToPremultiplied(Bitmap src, float opacity)
     {
         var dst = new Bitmap(src.Width, src.Height, PixelFormat.Format32bppPArgb);
         var rect = new Rectangle(0, 0, src.Width, src.Height);
-        using var straight = new Bitmap(src.Width, src.Height, PixelFormat.Format32bppArgb);
-        using (var g = Graphics.FromImage(straight))
-        {
-            g.CompositingMode = CompositingMode.SourceCopy;
-            g.DrawImageUnscaled(src, 0, 0);
-        }
-
-        var srcData = straight.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        var opacityByte = (int)Math.Round(Math.Clamp(opacity, 0f, 1f) * 255f);
+        var widthBytes = src.Width * 4;
+        var row = new byte[widthBytes];
+        var srcData = src.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
         var dstData = dst.LockBits(rect, ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
         try
         {
-            var bytes = Math.Abs(srcData.Stride) * src.Height;
-            var buffer = new byte[bytes];
-            Marshal.Copy(srcData.Scan0, buffer, 0, bytes);
-            for (var i = 0; i + 3 < bytes; i += 4)
+            for (var y = 0; y < src.Height; y++)
             {
-                var b = buffer[i];
-                var gch = buffer[i + 1];
-                var r = buffer[i + 2];
-                var a = buffer[i + 3];
-                buffer[i] = (byte)(b * a / 255);
-                buffer[i + 1] = (byte)(gch * a / 255);
-                buffer[i + 2] = (byte)(r * a / 255);
-            }
+                Marshal.Copy(IntPtr.Add(srcData.Scan0, y * srcData.Stride), row, 0, widthBytes);
+                for (var i = 0; i < widthBytes; i += 4)
+                {
+                    var a = row[i + 3] * opacityByte / 255;
+                    row[i] = (byte)(row[i] * a / 255);
+                    row[i + 1] = (byte)(row[i + 1] * a / 255);
+                    row[i + 2] = (byte)(row[i + 2] * a / 255);
+                    row[i + 3] = (byte)a;
+                }
 
-            Marshal.Copy(buffer, 0, dstData.Scan0, bytes);
+                Marshal.Copy(row, 0, IntPtr.Add(dstData.Scan0, y * dstData.Stride), widthBytes);
+            }
         }
         finally
         {
-            straight.UnlockBits(srcData);
+            src.UnlockBits(srcData);
             dst.UnlockBits(dstData);
         }
 
@@ -961,7 +983,9 @@ internal sealed class RopeOverlayForm : IDisposable
                     PlaceTop(preview: false);
                 }
 
-                if (_visible && _host.Pegs.Count > 0)
+                // TickRevealAnim already painted this tick. A second full-width layered
+                // update was what made the short slide feel stuck.
+                if (_revealDir == 0 && _visible && _host.Pegs.Count > 0)
                 {
                     _swayPhase += 0.11f;
                     if (_swayPhase > MathF.PI * 2)
@@ -971,7 +995,7 @@ internal sealed class RopeOverlayForm : IDisposable
 
                     Render();
                 }
-                else if (hoverChanged)
+                else if (_revealDir == 0 && hoverChanged)
                 {
                     Render();
                 }
@@ -1255,13 +1279,13 @@ internal sealed class RopeOverlayForm : IDisposable
             return;
         }
 
-        // ~120ms show / ~100ms hide at 60fps — quick but still has motion
-        var step = _revealDir > 0 ? 0.14f : 0.17f;
-        _reveal = Math.Clamp(_reveal + _revealDir * step, 0f, 1f);
+        var elapsed = Environment.TickCount64 - _revealAnimStart;
+        _reveal = RopeMotion.RevealAt(_revealDir, _revealAnimFrom, elapsed);
         if (_revealDir > 0 && _reveal >= 1f)
         {
             _reveal = 1f;
             _revealDir = 0;
+            UseIdleTick();
             // Opening is done — put the window back on the work-area top in case a
             // layered update nudged it during the slide.
             PlaceTop(preview: _previewPegId is not null || _falls.Count > 0);
@@ -1270,6 +1294,7 @@ internal sealed class RopeOverlayForm : IDisposable
         {
             _reveal = 0f;
             _revealDir = 0;
+            UseIdleTick();
             Native.ShowWindow(_hwnd, Native.SW_HIDE);
             _visible = false;
         }
