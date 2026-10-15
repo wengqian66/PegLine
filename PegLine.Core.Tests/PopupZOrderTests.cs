@@ -81,4 +81,56 @@ public class PopupZOrderTests
         Assert.Equal(0, session.Depth);
         Assert.Equal(PopupZOrder.RopeBand.Topmost, session.Placement);
     }
+
+    [Fact]
+    public void DecideShow_BeforeHwnd_DoesNotTouchZOrder()
+    {
+        var plan = PopupZOrder.DecideShow(hwndReady: false, hasBeenShown: false, menuOpen: false, loweredForMenu: false, alreadyVisible: false);
+
+        Assert.False(plan.UseShowWindow);
+        Assert.False(plan.MaySetWindowPos);
+        Assert.Equal(PopupZOrder.RopeBand.Unchanged, plan.Band);
+    }
+
+    [Fact]
+    public void DecideShow_FirstShow_UsesShowWindowEvenIfAMenuSessionIsOpen()
+    {
+        var closed = PopupZOrder.DecideShow(hwndReady: true, hasBeenShown: false, menuOpen: false, loweredForMenu: false, alreadyVisible: false);
+        var open = PopupZOrder.DecideShow(hwndReady: true, hasBeenShown: false, menuOpen: true, loweredForMenu: true, alreadyVisible: false);
+
+        Assert.True(closed.UseShowWindow);
+        Assert.True(closed.MaySetWindowPos);
+        Assert.Equal(PopupZOrder.RopeBand.Topmost, closed.Band);
+
+        Assert.True(open.UseShowWindow);
+        Assert.Equal(PopupZOrder.RopeBand.Topmost, open.Band);
+    }
+
+    [Fact]
+    public void DecideShow_AfterShow_OpenMenuDoesNotRaiseTheRope()
+    {
+        var lowered = PopupZOrder.DecideShow(hwndReady: true, hasBeenShown: true, menuOpen: true, loweredForMenu: true, alreadyVisible: true);
+        var holding = PopupZOrder.DecideShow(hwndReady: true, hasBeenShown: true, menuOpen: true, loweredForMenu: false, alreadyVisible: false);
+
+        Assert.False(lowered.UseShowWindow);
+        Assert.False(lowered.MaySetWindowPos);
+
+        Assert.False(holding.UseShowWindow);
+        Assert.True(holding.MaySetWindowPos);
+        Assert.Equal(PopupZOrder.RopeBand.Unchanged, holding.Band);
+
+        var visible = PopupZOrder.DecideShow(hwndReady: true, hasBeenShown: true, menuOpen: true, loweredForMenu: false, alreadyVisible: true);
+        Assert.False(visible.UseShowWindow);
+        Assert.False(visible.MaySetWindowPos);
+    }
+
+    [Fact]
+    public void DecideShow_AfterShow_ClosedMenuPinsTopmost()
+    {
+        var plan = PopupZOrder.DecideShow(hwndReady: true, hasBeenShown: true, menuOpen: false, loweredForMenu: false, alreadyVisible: true);
+
+        Assert.True(plan.UseShowWindow);
+        Assert.True(plan.MaySetWindowPos);
+        Assert.Equal(PopupZOrder.RopeBand.Topmost, plan.Band);
+    }
 }

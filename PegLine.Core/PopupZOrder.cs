@@ -71,4 +71,35 @@ public static class PopupZOrder
             return Depth == 0 ? RopeBand.Topmost : RopeBand.Unchanged;
         }
     }
+
+    /// <summary>
+    /// How to put the rope on screen. The first presentation must call ShowWindow
+    /// before any SetWindowPos. SetWindowPos (and skipping ShowWindow) while the
+    /// HWND has never been shown reenters the WinUI island before XamlRoot exists.
+    /// </summary>
+    public readonly record struct ShowPlan(bool UseShowWindow, bool MaySetWindowPos, RopeBand Band);
+
+    public static ShowPlan DecideShow(bool hwndReady, bool hasBeenShown, bool menuOpen, bool loweredForMenu, bool alreadyVisible)
+    {
+        if (!hwndReady)
+        {
+            return new ShowPlan(false, false, RopeBand.Unchanged);
+        }
+
+        // A menu session must not change the first show. ShowWindow is what
+        // realizes the layered HWND; SWP_SHOWWINDOW is not a substitute then.
+        if (!hasBeenShown || !menuOpen)
+        {
+            return new ShowPlan(true, true, RopeBand.Topmost);
+        }
+
+        // Visible, or demoted for this menu: leave z-order alone. ShowWindow
+        // would insert HWND_TOP and cover the popup.
+        if (loweredForMenu || alreadyVisible)
+        {
+            return new ShowPlan(false, false, RopeBand.Unchanged);
+        }
+
+        return new ShowPlan(false, true, RopeBand.Unchanged);
+    }
 }

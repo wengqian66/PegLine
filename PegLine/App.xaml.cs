@@ -41,5 +41,9 @@ public partial class App : Application
         {
             Log(e.Exception);
         }
+
+        // Leaving this false makes WinUI stow the exception and terminate as
+        // 0xc000027b in Microsoft.UI.Xaml.dll.
+        e.Handled = true;
     }
 }
