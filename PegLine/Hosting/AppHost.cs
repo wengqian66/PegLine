@@ -55,6 +55,9 @@ public sealed class AppHost
 
     public bool IsRopeVisible => _settings.RopeVisible;
 
+    /// <summary>True when the rope overlay is actually on screen (not merely allowed to auto-show).</summary>
+    public bool IsRopeShown => _rope?.IsShown == true;
+
     public string OverlaySkin => "Rope";
 
     public string HotkeyLabel =>
@@ -90,7 +93,7 @@ public sealed class AppHost
             _clipboard.ClipboardChanged += OnClipboardChanged;
             _tray = new TrayIcon(
                 _messages,
-                () => IsRopeVisible,
+                () => !RopeVisibility.ToggleShouldShow(IsRopeShown, _settings.RopeVisible, _rope?.CanShow == true),
                 () => HotkeyLabel,
                 ToggleRope,
                 ShowSettings,
@@ -116,7 +119,8 @@ public sealed class AppHost
         }
     }
 
-    public void ToggleRope() => SetRopeVisible(!_settings.RopeVisible);
+    public void ToggleRope() =>
+        SetRopeVisible(RopeVisibility.ToggleShouldShow(IsRopeShown, _settings.RopeVisible, _rope?.CanShow == true));
 
     public void SetRopeVisible(bool visible)
     {
@@ -124,7 +128,9 @@ public sealed class AppHost
         _store.Save(_settings);
         if (visible)
         {
-            _rope?.ShowRope();
+            // Hold it open. The saved flag can already be true while the rope is
+            // auto-hidden; a plain flip would turn the switch off instead of showing it.
+            _rope?.ShowRope(holdOpen: true);
         }
         else
         {

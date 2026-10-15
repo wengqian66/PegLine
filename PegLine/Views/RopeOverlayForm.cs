@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using PegLine.Core;
 using PegLine.Hosting;
 using PegLine.ViewModels;
 
@@ -38,6 +39,8 @@ internal sealed class RopeOverlayForm : IDisposable
     private float _reveal; // 0 hidden .. 1 shown
     private int _revealDir; // -1 hide, 0 idle, 1 show
     private bool _emptyGuide;
+    private bool _heldOpen; // user asked to see the rope; idle must not retract it
+    private Rectangle _anchor; // last on-screen placement; layered updates must not move this
     private const int AnimTimerId = 1;
 
     private sealed record HitZone(Rectangle Bounds, string Kind, string? PegId);
@@ -87,6 +90,7 @@ internal sealed class RopeOverlayForm : IDisposable
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "CreateWindowEx overlay failed");
         }
 
+        _anchor = new Rectangle(screen.X, screen.Y, screen.Width, 200);
         host.Pegs.CollectionChanged += OnPegsChanged;
         SyncThumbs();
         Render();
@@ -98,12 +102,32 @@ internal sealed class RopeOverlayForm : IDisposable
 
     public IntPtr Hwnd => _hwnd;
 
-    public void ShowRope()
+    /// <summary>True while the rope is on screen or the user has asked it to stay there.</summary>
+    public bool IsShown => _heldOpen || _visible;
+
+    public bool CanShow => _host.Pegs.Count > 0 || _falls.Count > 0 || _emptyGuide;
+
+    public void ShowRope(bool holdOpen = false)
     {
+        if (holdOpen)
+        {
+            _heldOpen = true;
+        }
+
         if (_host.Pegs.Count == 0 && _falls.Count == 0 && !_emptyGuide)
         {
+            _heldOpen = false;
             RequestHide(animated: false);
             return;
+        }
+
+        // A show that leaves _idleHideAt in the past is already idle. The next timer
+        // tick starts the hide slide and the rope parks flush with the top edge.
+        // A deadline NoteActivity just armed (including a shorter one) is left alone.
+        var now = Environment.TickCount64;
+        if (_idleHideAt <= now)
+        {
+            _idleHideAt = RopeVisibility.ExtendIdle(_idleHideAt, now, RopeVisibility.ShowLingerMs);
         }
 
         if (_reveal <= 0.01f)
@@ -114,7 +138,7 @@ internal sealed class RopeOverlayForm : IDisposable
         _revealDir = 1;
         PlaceTop(preview: _previewPegId is not null || _falls.Count > 0);
         Native.ShowWindow(_hwnd, Native.SW_SHOWNOACTIVATE);
-        Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, 0, 0, 0, 0,
+        Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, _anchor.X, _anchor.Y, _anchor.Width, _anchor.Height,
             Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
         _visible = true;
         Render();
@@ -122,11 +146,13 @@ internal sealed class RopeOverlayForm : IDisposable
 
     public void HideRope()
     {
+        _heldOpen = false;
         RequestHide(animated: true);
     }
 
     private void RequestHide(bool animated)
     {
+        _heldOpen = false;
         if (!animated || !_visible || _reveal <= 0.01f)
         {
             _reveal = 0;
@@ -249,6 +275,11 @@ internal sealed class RopeOverlayForm : IDisposable
     private void PlaceTop(bool preview = false)
     {
         var screen = ScreenBounds();
+        if (screen.Width <= 0 || screen.Height <= 0)
+        {
+            return;
+        }
+
         var height = 230;
         if (_falls.Count > 0)
         {
@@ -263,7 +294,9 @@ internal sealed class RopeOverlayForm : IDisposable
             height = 96;
         }
 
-        Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, screen.X, screen.Y, screen.Width, height, Native.SWP_NOACTIVATE);
+        height = Math.Clamp(height, 96, Math.Max(96, screen.Height));
+        _anchor = new Rectangle(screen.X, screen.Y, screen.Width, height);
+        Native.SetWindowPos(_hwnd, Native.HWND_TOPMOST, _anchor.X, _anchor.Y, _anchor.Width, _anchor.Height, Native.SWP_NOACTIVATE);
     }
 
     private void Render()
@@ -273,9 +306,19 @@ internal sealed class RopeOverlayForm : IDisposable
             return;
         }
 
-        Native.GetWindowRect(_hwnd, out var rect);
-        var width = Math.Max(200, rect.right - rect.left);
-        var height = Math.Max(120, rect.bottom - rect.top);
+        int width;
+        int height;
+        if (_anchor.Width > 0 && _anchor.Height > 0)
+        {
+            width = _anchor.Width;
+            height = _anchor.Height;
+        }
+        else
+        {
+            Native.GetWindowRect(_hwnd, out var rect);
+            width = Math.Max(200, rect.right - rect.left);
+            height = Math.Max(120, rect.bottom - rect.top);
+        }
 
         using var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
         using (var g = Graphics.FromImage(bmp))
@@ -712,8 +755,6 @@ internal sealed class RopeOverlayForm : IDisposable
         var old = Native.SelectObject(memDc, hBitmap);
         var size = new Native.SIZE { cx = premul.Width, cy = premul.Height };
         var pointSource = new Native.POINT { X = 0, Y = 0 };
-        Native.GetWindowRect(_hwnd, out var rect);
-        var topPos = new Native.POINT { X = rect.left, Y = rect.top };
         var blend = new Native.BLENDFUNCTION
         {
             BlendOp = 0,
@@ -721,10 +762,13 @@ internal sealed class RopeOverlayForm : IDisposable
             SourceConstantAlpha = 255,
             AlphaFormat = 1,
         };
+        // pptDst NULL: do not move the window. Passing GetWindowRect back through
+        // UpdateLayeredWindow on a Per-Monitor V2 process can rescale the origin and
+        // leave the rope flush with Y≈0. PlaceTop owns the position.
         var ok = Native.UpdateLayeredWindow(
             _hwnd,
             screenDc,
-            ref topPos,
+            IntPtr.Zero,
             ref size,
             memDc,
             ref pointSource,
@@ -735,6 +779,8 @@ internal sealed class RopeOverlayForm : IDisposable
         {
             App.Log(new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "UpdateLayeredWindow failed"));
         }
+
+        RestoreAnchor();
 
         Native.SelectObject(memDc, old);
         Native.DeleteObject(hBitmap);
@@ -1216,6 +1262,9 @@ internal sealed class RopeOverlayForm : IDisposable
         {
             _reveal = 1f;
             _revealDir = 0;
+            // Opening is done — put the window back on the work-area top in case a
+            // layered update nudged it during the slide.
+            PlaceTop(preview: _previewPegId is not null || _falls.Count > 0);
         }
         else if (_revealDir < 0 && _reveal <= 0f)
         {
@@ -1231,22 +1280,36 @@ internal sealed class RopeOverlayForm : IDisposable
         }
     }
 
-    private void NoteActivity(bool show, int lingerMs = 4200)
+    private void NoteActivity(bool show, int lingerMs = RopeVisibility.ShowLingerMs)
     {
-        _idleHideAt = Environment.TickCount64 + lingerMs;
+        _idleHideAt = RopeVisibility.ExtendIdle(_idleHideAt, Environment.TickCount64, lingerMs);
         if (show && _host.IsRopeVisible && (_host.Pegs.Count > 0 || _falls.Count > 0 || _emptyGuide))
         {
             ShowRope();
         }
     }
 
+    private bool CanIdleHide() =>
+        RopeVisibility.ShouldAutoHide(_heldOpen, _revealDir > 0, _visible, Environment.TickCount64, _idleHideAt);
+
     private void TickAutoReveal()
     {
         if (!_host.IsRopeVisible)
         {
-            if (_visible)
+            if (_visible || _heldOpen)
             {
                 HideRope();
+            }
+
+            return;
+        }
+
+        // Explicit show stays until the user hides it. Idle must not slide it away.
+        if (_heldOpen)
+        {
+            if (!_visible && (_host.Pegs.Count > 0 || _falls.Count > 0 || _emptyGuide))
+            {
+                ShowRope();
             }
 
             return;
@@ -1268,12 +1331,7 @@ internal sealed class RopeOverlayForm : IDisposable
                 return;
             }
 
-            if (_visible && Environment.TickCount64 >= _idleHideAt)
-            {
-                _emptyGuide = false;
-                HideRope();
-            }
-            else if (_visible && !nearTop && Environment.TickCount64 >= _idleHideAt)
+            if (CanIdleHide())
             {
                 _emptyGuide = false;
                 HideRope();
@@ -1300,10 +1358,40 @@ internal sealed class RopeOverlayForm : IDisposable
             return;
         }
 
-        if (_visible && Environment.TickCount64 >= _idleHideAt)
+        if (CanIdleHide())
         {
             HideRope();
         }
+    }
+
+    private void RestoreAnchor()
+    {
+        if (_anchor.Width <= 0 || _anchor.Height <= 0 || _hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        if (!Native.GetWindowRect(_hwnd, out var rect))
+        {
+            return;
+        }
+
+        if (rect.left == _anchor.X
+            && rect.top == _anchor.Y
+            && rect.right - rect.left == _anchor.Width
+            && rect.bottom - rect.top == _anchor.Height)
+        {
+            return;
+        }
+
+        Native.SetWindowPos(
+            _hwnd,
+            Native.HWND_TOPMOST,
+            _anchor.X,
+            _anchor.Y,
+            _anchor.Width,
+            _anchor.Height,
+            Native.SWP_NOACTIVATE);
     }
 
     private void EnsureMouseTracking()
@@ -1534,7 +1622,7 @@ internal sealed class RopeOverlayForm : IDisposable
         public static extern bool DeleteObject(IntPtr ho);
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref POINT pptDst, ref SIZE psize,
+        public static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, IntPtr pptDst, ref SIZE psize,
             IntPtr hdcSrc, ref POINT pptSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
 
         [DllImport("user32.dll", SetLastError = true)]
