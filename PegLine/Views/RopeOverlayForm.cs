@@ -47,6 +47,8 @@ internal sealed class RopeOverlayForm : IDisposable
     private const int AnimTimerId = 1;
     private readonly PopupZOrder.Session _popup = new();
     private bool _loweredForMenu;
+    // Set only after ShowWindow returns. SetWindowPos before that reenters WinUI.
+    private bool _presented;
 
     private sealed record HitZone(Rectangle Bounds, string Kind, string? PegId);
     private sealed class FallAnim
@@ -98,7 +100,9 @@ internal sealed class RopeOverlayForm : IDisposable
         _anchor = new Rectangle(screen.X, screen.Y, screen.Width, 200);
         host.Pegs.CollectionChanged += OnPegsChanged;
         SyncThumbs();
-        Render();
+        // Do not Render or SetWindowPos here. UpdateLayeredWindow and HWND_TOPMOST
+        // before ShowWindow run while the keep-alive WinUI window still has no
+        // XamlRoot, and WinUI fail-fasts (0xc000027b) in Microsoft.UI.Xaml.dll.
         UpdateEmpty();
         UseTick(RopeIdle.IdlePollMs);
     }
@@ -150,21 +154,30 @@ internal sealed class RopeOverlayForm : IDisposable
         }
 
         PlaceTop(preview: _previewPegId is not null || _falls.Count > 0);
-        if (_popup.IsOpen)
+        var show = PopupZOrder.DecideShow(
+            _hwnd != IntPtr.Zero, _presented, _popup.IsOpen, _loweredForMenu, _visible);
+        var firstShow = show.UseShowWindow && !_presented;
+        if (show.UseShowWindow)
         {
-            // ShowWindow inserts HWND_TOP. The rope is not topmost for the menu,
-            // so that would paint the cards over the popup. Show without reordering.
-            if (!_visible)
-            {
-                PositionRope(_popup.Placement, _anchor.X, _anchor.Y, _anchor.Width, _anchor.Height,
-                    Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_SHOWWINDOW);
-            }
-        }
-        else
-        {
+            // Realize the HWND before any SetWindowPos. ShowWindow inserts HWND_TOP,
+            // which is what we want on the first show and whenever no menu is up.
             Native.ShowWindow(_hwnd, Native.SW_SHOWNOACTIVATE);
-            PositionRope(_popup.Placement, _anchor.X, _anchor.Y, _anchor.Width, _anchor.Height,
-                Native.SWP_NOMOVE | Native.SWP_NOSIZE);
+            _presented = true;
+        }
+
+        if (show.MaySetWindowPos)
+        {
+            // First show applies PlaceTop's anchor. Later shows only re-pin z-order;
+            // PlaceTop already moved the window once _presented was true.
+            var flags = firstShow ? 0u : Native.SWP_NOMOVE | Native.SWP_NOSIZE;
+            if (!show.UseShowWindow)
+            {
+                // Menu is open and this window was already shown. Do not call
+                // ShowWindow — it would paint the cards over the popup.
+                flags |= Native.SWP_SHOWWINDOW;
+            }
+
+            PositionRope(show.Band, _anchor.X, _anchor.Y, _anchor.Width, _anchor.Height, flags);
         }
 
         _visible = true;
@@ -889,6 +902,21 @@ internal sealed class RopeOverlayForm : IDisposable
 
     private IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
+        try
+        {
+            return DispatchRope(hWnd, msg, wParam, lParam);
+        }
+        catch (Exception ex)
+        {
+            // A managed exception escaping into the WinUI message loop is fail-fasted
+            // as 0xc000027b in Microsoft.UI.Xaml.dll (combase stows it).
+            App.Log(ex);
+            return Native.DefWindowProcW(hWnd, msg, wParam, lParam);
+        }
+    }
+
+    private IntPtr DispatchRope(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+    {
         switch (msg)
         {
             case Native.WM_NCHITTEST:
@@ -1468,7 +1496,9 @@ internal sealed class RopeOverlayForm : IDisposable
         // Only the first hold demotes, and only when the popup can actually sit on
         // the cards. A later HWND_NOTOPMOST would jump the rope above the open menu.
         // A tray click at the clock, far below a short rope, leaves topmost alone.
-        if (opening && PopupWouldMeetRope())
+        // Demote only after ShowWindow has returned. HWND_NOTOPMOST before that
+        // restacks the still-initializing WinUI window and crashes on launch.
+        if (opening && _presented && PopupWouldMeetRope())
         {
             _loweredForMenu = true;
             PositionRope(PopupZOrder.RopeBand.BelowMenu, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE);
@@ -1510,12 +1540,14 @@ internal sealed class RopeOverlayForm : IDisposable
 
     private void PositionRope(PopupZOrder.RopeBand band, int x, int y, int cx, int cy, uint flags)
     {
-        if (_disposed || _hwnd == IntPtr.Zero)
+        // No SetWindowPos until ShowWindow has returned. The HWND exists earlier,
+        // but z-order changes before that hit the WinUI island with a null XamlRoot.
+        if (_disposed || !_presented || _hwnd == IntPtr.Zero || !Native.IsWindow(_hwnd))
         {
             return;
         }
 
-        flags |= Native.SWP_NOACTIVATE;
+        flags |= Native.SWP_NOACTIVATE | Native.SWP_NOOWNERZORDER;
         var after = IntPtr.Zero;
         switch (band)
         {
@@ -1526,7 +1558,7 @@ internal sealed class RopeOverlayForm : IDisposable
                 after = Native.HWND_NOTOPMOST;
                 break;
             default:
-                flags |= Native.SWP_NOZORDER | Native.SWP_NOOWNERZORDER;
+                flags |= Native.SWP_NOZORDER;
                 break;
         }
 
@@ -1741,6 +1773,9 @@ internal sealed class RopeOverlayForm : IDisposable
 
         [DllImport("user32.dll")]
         public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        public static extern bool IsWindow(IntPtr hWnd);
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);

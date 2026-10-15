@@ -105,7 +105,12 @@ public sealed class AppHost
             _watcher.ImageRenamed += OnImageRenamed;
             FillFromFolders();
             _watcher.SetFolders(_settings.ResolveWatchFolders());
+            // An empty Window has no XamlRoot. The rope's first SetWindowPos /
+            // UpdateLayeredWindow then reenters Microsoft.UI.Xaml and fail-fasts
+            // (0xc000027b, combase). Attach content before hiding, then build the rope.
             _keepAlive = new Microsoft.UI.Xaml.Window();
+            _keepAlive.Content = new Microsoft.UI.Xaml.Controls.Grid();
+            _keepAlive.AppWindow.IsShownInSwitchers = false;
             _keepAlive.AppWindow.Hide();
             CreateOverlayForSkin();
 
