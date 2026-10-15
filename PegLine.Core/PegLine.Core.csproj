@@ -6,6 +6,6 @@
     <RootNamespace>PegLine.Core</RootNamespace>
     <AssemblyName>PegLine.Core</AssemblyName>
     <Description>Local logic for PegLine: settings, the peg list, and the screenshot folder watcher.</Description>
-    <Version>1.0.3</Version>
+    <Version>1.0.4</Version>
   </PropertyGroup>
 </Project>

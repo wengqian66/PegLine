@@ -19,7 +19,7 @@
     <AssemblyTitle>PegLine</AssemblyTitle>
     <Product>PegLine 挂绳</Product>
     <Description>A screenshot clothesline for Windows. Images stay on this PC.</Description>
-    <Version>1.0.3</Version>
+    <Version>1.0.4</Version>
     <Company>PegLine</Company>
     <!-- Drop unused culture satellites from a self-contained publish. UI copy is zh-CN. -->
     <SatelliteResourceLanguages>zh-CN;zh-Hans;en</SatelliteResourceLanguages>

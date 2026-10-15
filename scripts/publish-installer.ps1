@@ -9,7 +9,7 @@
 param(
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
-    [string]$Version = "1.0.3",
+    [string]$Version = "1.0.4",
     [switch]$SkipPublish,
     [switch]$SkipInstaller
 )
