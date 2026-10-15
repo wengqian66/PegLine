@@ -14,9 +14,10 @@ public static class RopeMotion
     /// <summary>Was ~100ms of 0.17 steps. Hide is shorter than show.</summary>
     public const int HideDurationMs = 40;
 
-    /// <summary>Timer while a show or hide is in progress. Idle stays at <see cref="IdleTickMs"/>.</summary>
+    /// <summary>Timer while a show or hide slide is in progress.</summary>
     public const int AnimTickMs = 8;
 
+    /// <summary>Former always-on tick. Resting poll is <see cref="RopeIdle.IdlePollMs"/>.</summary>
     public const int IdleTickMs = 16;
 
     /// <summary>

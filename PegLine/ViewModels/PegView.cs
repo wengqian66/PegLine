@@ -103,6 +103,11 @@ public sealed class PegView : INotifyPropertyChanged
         OnPropertyChanged(nameof(DisplayName));
     }
 
+    /// <summary>
+    /// WinUI decode for <see cref="PegControl"/>. The GDI rope draws its own thumbnails
+    /// and does not call this — calling it at startup kept a decoded bitmap and a
+    /// stream copy per peg that nothing on screen used.
+    /// </summary>
     public async Task LoadThumbnailAsync()
     {
         for (var attempt = 0; attempt < 4; attempt++)

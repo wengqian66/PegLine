@@ -793,7 +793,6 @@ public void ShowSettings()
                 var view = new PegView(added.Peg, Pegs.Count);
                 Pegs.Add(view);
                 RememberContentHash(path);
-                _ = view.LoadThumbnailAsync();
             }
         }
     }
@@ -889,7 +888,6 @@ public void ShowSettings()
                 if (view is not null)
                 {
                     view.UpdatePath(updated.FilePath);
-                    _ = view.LoadThumbnailAsync();
                 }
 
                 if (_settings.IsDismissed(e.OldPath))
@@ -999,14 +997,12 @@ public void ShowSettings()
             {
                 Pegs.Remove(view);
                 Pegs.Insert(0, view);
-                _ = view.LoadThumbnailAsync();
             }
         }
         else
         {
             view = new PegView(result.Peg, 0);
             Pegs.Insert(0, view);
-            _ = view.LoadThumbnailAsync();
         }
 
         DropViews(result.Trimmed);

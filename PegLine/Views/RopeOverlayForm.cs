@@ -43,6 +43,8 @@ internal sealed class RopeOverlayForm : IDisposable
     private Rectangle _anchor; // last on-screen placement; layered updates must not move this
     private long _revealAnimStart;
     private float _revealAnimFrom;
+    private bool _pointerOnRope;
+    private uint _tickMs;
     private const int AnimTimerId = 1;
 
     private sealed record HitZone(Rectangle Bounds, string Kind, string? PegId);
@@ -97,7 +99,7 @@ internal sealed class RopeOverlayForm : IDisposable
         SyncThumbs();
         Render();
         UpdateEmpty();
-        Native.SetTimer(_hwnd, AnimTimerId, RopeMotion.IdleTickMs, IntPtr.Zero);
+        UseTick(RopeIdle.IdlePollMs);
     }
 
     public bool AllowClose { get; set; }
@@ -173,7 +175,8 @@ internal sealed class RopeOverlayForm : IDisposable
         {
             _reveal = 0;
             _revealDir = 0;
-            UseIdleTick();
+            _pointerOnRope = false;
+            UseTick(RopeIdle.IdlePollMs);
             Native.ShowWindow(_hwnd, Native.SW_HIDE);
             _visible = false;
             return;
@@ -190,18 +193,41 @@ internal sealed class RopeOverlayForm : IDisposable
         _revealAnimFrom = _reveal;
         _revealAnimStart = Environment.TickCount64;
         _revealDir = direction;
-        if (_hwnd != IntPtr.Zero)
-        {
-            Native.SetTimer(_hwnd, AnimTimerId, RopeMotion.AnimTickMs, IntPtr.Zero);
-        }
+        UseTick(RopeMotion.AnimTickMs);
     }
 
-    private void UseIdleTick()
+    private void UseTick(int milliseconds)
     {
-        if (_hwnd != IntPtr.Zero)
+        var next = (uint)milliseconds;
+        if (_hwnd == IntPtr.Zero || _tickMs == next)
         {
-            Native.SetTimer(_hwnd, AnimTimerId, RopeMotion.IdleTickMs, IntPtr.Zero);
+            return;
         }
+
+        _tickMs = next;
+        Native.SetTimer(_hwnd, AnimTimerId, next, IntPtr.Zero);
+    }
+
+    private void SamplePointer()
+    {
+        _pointerOnRope = false;
+        if (!_visible || _anchor.Width <= 0 || _anchor.Height <= 0)
+        {
+            return;
+        }
+
+        if (!Native.GetCursorPos(out var pt))
+        {
+            return;
+        }
+
+        var band = _falls.Count > 0 || _previewPegId is not null
+            ? _anchor.Height
+            : Math.Min(_anchor.Height, 230);
+        _pointerOnRope = pt.X >= _anchor.X
+            && pt.X < _anchor.Right
+            && pt.Y >= _anchor.Y
+            && pt.Y < _anchor.Y + band;
     }
 
 
@@ -938,10 +964,12 @@ internal sealed class RopeOverlayForm : IDisposable
                     break;
                 }
 
+                SamplePointer();
                 TickAutoReveal();
                 TickRevealAnim();
 
                 // Finish discard falls
+                var layoutChanged = false;
                 if (_falls.Count > 0)
                 {
                     var done = _falls.Values.Where(f => Environment.TickCount64 - f.Start >= 480).ToList();
@@ -955,6 +983,7 @@ internal sealed class RopeOverlayForm : IDisposable
                     if (_falls.Count == 0)
                     {
                         PlaceTop(preview: _previewPegId is not null);
+                        layoutChanged = true;
                     }
                 }
 
@@ -983,9 +1012,9 @@ internal sealed class RopeOverlayForm : IDisposable
                     PlaceTop(preview: false);
                 }
 
-                // TickRevealAnim already painted this tick. A second full-width layered
-                // update was what made the short slide feel stuck.
-                if (_revealDir == 0 && _visible && _host.Pegs.Count > 0)
+                // TickRevealAnim already painted a slide frame. Otherwise only sway or
+                // falling cards repaint — a rope that is just sitting there does not.
+                if (RopeIdle.ShouldPaintMotionFrame(_visible, _revealDir != 0, _falls.Count > 0, _pointerOnRope))
                 {
                     _swayPhase += 0.11f;
                     if (_swayPhase > MathF.PI * 2)
@@ -995,11 +1024,21 @@ internal sealed class RopeOverlayForm : IDisposable
 
                     Render();
                 }
-                else if (_revealDir == 0 && hoverChanged)
+                else if (hoverChanged || layoutChanged)
                 {
                     Render();
                 }
+                else if (_visible && _status is not null && Environment.TickCount64 > _statusUntil)
+                {
+                    _status = null;
+                    Render();
+                }
 
+                UseTick(RopeIdle.TickIntervalMs(
+                    _revealDir != 0,
+                    _falls.Count > 0,
+                    _pointerOnRope,
+                    RopeMotion.AnimTickMs));
                 return IntPtr.Zero;
             }
             case Native.WM_LBUTTONUP:
@@ -1217,6 +1256,7 @@ internal sealed class RopeOverlayForm : IDisposable
 
         NoteActivity(show: true, lingerMs: 6000);
         PlaceTop(preview: true);
+        UseTick(RopeIdle.MotionTickMs);
         Render();
     }
 
@@ -1285,16 +1325,16 @@ internal sealed class RopeOverlayForm : IDisposable
         {
             _reveal = 1f;
             _revealDir = 0;
-            UseIdleTick();
             // Opening is done — put the window back on the work-area top in case a
-            // layered update nudged it during the slide.
+            // layered update nudged it during the slide. The timer footer picks 8ms,
+            // 16ms, or the idle poll once this slide has finished.
             PlaceTop(preview: _previewPegId is not null || _falls.Count > 0);
         }
         else if (_revealDir < 0 && _reveal <= 0f)
         {
             _reveal = 0f;
             _revealDir = 0;
-            UseIdleTick();
+            _pointerOnRope = false;
             Native.ShowWindow(_hwnd, Native.SW_HIDE);
             _visible = false;
         }
