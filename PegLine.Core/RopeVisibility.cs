@@ -1,9 +1,11 @@
 namespace PegLine.Core;
 
 /// <summary>
-/// Decides when the top rope may retract. The hotkey follows what is on screen:
-/// a show has to arm the idle timer, or the next tick treats the rope as already idle
-/// and slides it back to the top edge.
+/// Decides when the top rope may retract. A show — including the hotkey — arms the
+/// idle timer and then hides after the linger once the pointer has left. The hotkey
+/// follows what is on screen, so an auto-hidden rope is shown again instead of
+/// turning the switch off. Leaving the timer unarmed makes the next tick treat the
+/// rope as already idle and slide it back to the top edge.
 /// </summary>
 public static class RopeVisibility
 {
@@ -30,9 +32,13 @@ public static class RopeVisibility
         return true;
     }
 
-    public static bool ShouldAutoHide(bool heldOpen, bool opening, bool visuallyVisible, long now, long idleHideAt)
+    /// <summary>
+    /// Hide after the linger. A slide that is still opening must not retract, or the
+    /// rope parks flush with the top edge. Already off screen is not another hide.
+    /// </summary>
+    public static bool ShouldAutoHide(bool opening, bool visuallyVisible, long now, long idleHideAt)
     {
-        if (heldOpen || opening || !visuallyVisible)
+        if (opening || !visuallyVisible)
         {
             return false;
         }

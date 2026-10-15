@@ -128,9 +128,9 @@ public sealed class AppHost
         _store.Save(_settings);
         if (visible)
         {
-            // Hold it open. The saved flag can already be true while the rope is
-            // auto-hidden; a plain flip would turn the switch off instead of showing it.
-            _rope?.ShowRope(holdOpen: true);
+            // ShowRope arms the linger. Auto-hide does not clear the saved flag, so the
+            // hotkey decides from what is on screen and a later press shows the rope again.
+            _rope?.ShowRope();
         }
         else
         {
