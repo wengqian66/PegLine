@@ -58,7 +58,7 @@ Write-Host "Runtime:    $Runtime"
 
 if (-not $SkipPublish) {
     Write-Host ""
-    Write-Host "[1/2] dotnet publish (self-contained + WindowsAppSDKSelfContained)..." -ForegroundColor Cyan
+    Write-Host "[1/2] dotnet publish (self-contained, no ReadyToRun, zh-CN/en satellites)..." -ForegroundColor Cyan
     if (Test-Path $publishDir) {
         Get-ChildItem $publishDir -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -71,7 +71,8 @@ if (-not $SkipPublish) {
         -p:Platform=x64 `
         -p:WindowsPackageType=None `
         -p:WindowsAppSDKSelfContained=true `
-        -p:PublishReadyToRun=true `
+        -p:PublishReadyToRun=false `
+        -p:SatelliteResourceLanguages=zh-CN;zh-Hans;en `
         -p:DebugType=none `
         -p:DebugSymbols=false `
         -p:Version=$Version `

@@ -21,6 +21,8 @@
     <Description>A screenshot clothesline for Windows. Images stay on this PC.</Description>
     <Version>1.0.1</Version>
     <Company>PegLine</Company>
+    <!-- Drop unused culture satellites from a self-contained publish. UI copy is zh-CN. -->
+    <SatelliteResourceLanguages>zh-CN;zh-Hans;en</SatelliteResourceLanguages>
     <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU'">x64</Platform>
   </PropertyGroup>
 
@@ -39,7 +41,9 @@
   <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(PublishDir)' != ''">
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
-    <PublishReadyToRun>true</PublishReadyToRun>
+    <!-- ReadyToRun compiles the whole self-contained framework to native images.
+         That grows the installer and the mapped working set; this tray app does not need it. -->
+    <PublishReadyToRun>false</PublishReadyToRun>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
