@@ -72,7 +72,7 @@ if (-not $SkipPublish) {
         -p:WindowsPackageType=None `
         -p:WindowsAppSDKSelfContained=true `
         -p:PublishReadyToRun=false `
-        -p:SatelliteResourceLanguages=zh-CN;zh-Hans;en `
+        -p:SatelliteResourceLanguages="zh-CN;zh-Hans;en" `
         -p:DebugType=none `
         -p:DebugSymbols=false `
         -p:Version=$Version `
